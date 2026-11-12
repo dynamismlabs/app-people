@@ -153,9 +153,10 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
   const callRef = useRef(client.call);
   callRef.current = client.call;
 
+  // Ri gave the view the `data` part of the opener's result. open_view returns { resource, data, scope }.
   const open = useCallback(async (place: string) => {
     const { path, query } = splitPath(place);
-    return callRef.current("open_view", { path, query });
+    return ((await callRef.current("open_view", { path, query })) as { data: unknown }).data;
   }, []);
   const receive = useCallback((value: unknown, moved: boolean) => {
     const key = stableJson(value);

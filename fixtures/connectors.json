@@ -1,0 +1,19 @@
+{
+  "mail": {
+    "messages": [
+      { "id": "fixture-m1", "threadId": "fixture-t1", "from": { "name": "Maya Chen", "email": "maya@northstar.example" }, "to": [{ "email": "you@personal.example" }], "cc": [], "subject": "Portfolio review", "date": "2026-11-10T16:00:00.000Z", "snippet": "Thanks for the intro.", "text": "Thanks for the intro. I will send the deck on Friday.", "labels": ["INBOX"] },
+      { "id": "fixture-m2", "threadId": "fixture-t2", "from": { "name": "You", "email": "you@personal.example" }, "to": [{ "name": "Jordan Bell", "email": "jordan@fieldwork.example" }], "cc": [], "subject": "Scope", "date": "2026-11-09T15:00:00.000Z", "snippet": "Revised proposal attached.", "text": "Revised proposal attached.", "labels": ["SENT"] }
+    ]
+  },
+  "calendar": {
+    "events": [
+      { "id": "fixture-e1", "title": "Portfolio discussion", "start": "2026-11-20T17:00:00.000Z", "end": "2026-11-20T18:00:00.000Z", "allDay": false }
+    ]
+  },
+  "tools": {
+    "gmail__get_profile": { "result": { "emailAddress": "you@personal.example", "historyId": "100" } },
+    "ri__ai_text": { "result": { "text": "{\"commitments\":[],\"resolutions\":[],\"facts\":[],\"stages\":[]}" } },
+    "ri__create_task": { "result": { "id": "fixture-task-1", "title": "Fictional follow-up", "status": "open" } },
+    "ri__get_task": { "result": { "id": "fixture-task-1", "title": "Fictional follow-up", "status": "open", "completedAt": null } }
+  }
+}
