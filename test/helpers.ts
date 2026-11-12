@@ -131,7 +131,11 @@ export function hubSource(capability: Capability, accounts: Grant[]): ConnectorS
   const back = Object.fromEntries(Object.entries(HUB_TOOLS).map(([name, tool]) => [tool, name]));
   return {
     kind: 'hub',
-    async listTools() { return Object.values(HUB_TOOLS); },
+    // Ri lists a provider's tools only when an account of it is granted.
+    async listTools() {
+      const kinds = new Set(accounts.map((grant) => grant.binding));
+      return Object.values(HUB_TOOLS).filter((tool) => tool.startsWith('ri__') || (tool.startsWith('gmail__') && kinds.has('mail')) || (tool.startsWith('google_calendar__') && kinds.has('calendar')));
+    },
     async callTool(tool, args) {
       const name = back[tool];
       if (!name) throw new Error(`Tool ${tool} not found`);

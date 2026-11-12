@@ -92,7 +92,7 @@ export async function backgroundStep(ctx: Ctx, invocation: AppInvocation, option
     const account = job.sourceKey.startsWith('account:') ? job.sourceKey.slice(8) : null;
     if (account && (job.kind === 'mail' || job.kind === 'calendar')) {
       ctx.db.tx(() => {
-        ctx.accounts.failed(account, job.kind as 'mail' | 'calendar', code === 'revoked' || code === 'forbidden' ? 'reconnect' : 'error', code === 'revoked' ? 'Reconnect this account in Ri to resume updates' : code === 'forbidden' ? 'Ri no longer allows People to read this account' : redact(error));
+        ctx.accounts.failed(account, job.kind as 'mail' | 'calendar', code === 'revoked' || code === 'forbidden' ? 'reconnect' : 'error', code === 'revoked' ? 'Reconnect this account in Ri to resume updates' : code === 'forbidden' ? (redact(error) || 'Ri no longer allows People to read this account') : redact(error));
         touch(ctx, job.sourceKey);
       });
     }

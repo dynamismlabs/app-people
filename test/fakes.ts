@@ -66,7 +66,7 @@ export function fakeHost(accounts: Record<string, FakeAccount>, options: FakeOpt
         if (!mail) throw new AppError('not_found', 'gone');
         return gmailRaw(mail);
       }
-      case 'google_calendar.list_calendars': return { calendars: [{ id: 'primary', summary: box!.email, primary: true }] };
+      case 'google_calendar.list_calendars': return { calendars: [{ id: box!.email, summary: box!.email, primary: true }] };
       case 'google_calendar.sync_events': {
         if (args.syncToken) {
           const step = Number(String(args.syncToken).replace('sync-', ''));
