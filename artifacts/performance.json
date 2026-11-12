@@ -1,108 +1,108 @@
 {
-  "measuredAt": "2026-11-12T23:29:18.892Z",
+  "measuredAt": "2026-11-12T23:34:26.249Z",
   "volume": {
     "people": 10000,
     "companies": 1000,
     "interactions": 100000
   },
-  "seedSeconds": 28.6,
+  "seedSeconds": 33.7,
   "node": "v24.2.0",
   "platform": "darwin arm64",
   "results": {
     "list_people first page by name": {
-      "p50": 6.2,
-      "p95": 21.4,
-      "max": 23.1,
+      "p50": 4,
+      "p95": 5.5,
+      "max": 5.9,
       "runs": 30
     },
     "list_people with each sort": {
-      "p50": 8.2,
-      "p95": 23.2,
-      "max": 51.2,
+      "p50": 5.7,
+      "p95": 15.1,
+      "max": 16.4,
       "runs": 40
     },
     "list_people paging 100 per page": {
-      "p50": 8.1,
-      "p95": 13.4,
-      "max": 17.1,
+      "p50": 8.9,
+      "p95": 36.2,
+      "max": 47,
       "runs": 30
     },
     "list_people filtered by company, list and last exchange": {
-      "p50": 13.2,
-      "p95": 72.7,
-      "max": 73.1,
+      "p50": 17.5,
+      "p95": 99.9,
+      "max": 117.8,
       "runs": 30
     },
     "list_people with next meeting filter": {
-      "p50": 9.1,
-      "p95": 10.1,
-      "max": 10.4,
+      "p50": 8.7,
+      "p95": 18.7,
+      "max": 25.6,
       "runs": 20
     },
     "list_people with follow-up filter": {
-      "p50": 9.4,
-      "p95": 17.6,
-      "max": 28.6,
+      "p50": 9.3,
+      "p95": 34.8,
+      "max": 35.9,
       "runs": 20
     },
     "search_people": {
-      "p50": 2.4,
-      "p95": 18.6,
-      "max": 20.5,
+      "p50": 2.5,
+      "p95": 45.9,
+      "max": 106.9,
       "runs": 40
     },
     "get_person": {
       "p50": 0.5,
-      "p95": 0.8,
-      "max": 0.9,
+      "p95": 0.9,
+      "max": 7.9,
       "runs": 40
     },
     "list_interactions person timeline": {
-      "p50": 1.5,
-      "p95": 4.2,
-      "max": 4.4,
+      "p50": 1.7,
+      "p95": 4.7,
+      "max": 10.1,
       "runs": 40
     },
     "list_organizations": {
-      "p50": 3.7,
-      "p95": 5.4,
-      "max": 7.9,
+      "p50": 4.1,
+      "p95": 6,
+      "max": 6.4,
       "runs": 30
     },
     "get_organization": {
-      "p50": 1.2,
-      "p95": 1.6,
-      "max": 2.7,
+      "p50": 1.4,
+      "p95": 6.7,
+      "max": 8.7,
       "runs": 30
     },
     "get_today": {
-      "p50": 11.4,
-      "p95": 15.7,
-      "max": 16.5,
+      "p50": 15.9,
+      "p95": 26.6,
+      "max": 41.7,
       "runs": 20
     },
     "chat list_people by name": {
-      "p50": 37.4,
-      "p95": 57.8,
-      "max": 93.1,
+      "p50": 35.9,
+      "p95": 61.1,
+      "max": 97.2,
       "runs": 30
     },
     "chat list_people by last exchange": {
-      "p50": 46,
-      "p95": 101.5,
-      "max": 167.3,
+      "p50": 47,
+      "p95": 111.9,
+      "max": 114.6,
       "runs": 30
     },
     "chat search_people": {
       "p50": 0.5,
-      "p95": 2.8,
-      "max": 2.9,
+      "p95": 3,
+      "max": 4.2,
       "runs": 30
     },
     "chat get_person": {
-      "p50": 0.5,
-      "p95": 0.8,
-      "max": 0.8,
+      "p50": 0.6,
+      "p95": 1.8,
+      "max": 2.1,
       "runs": 30
     }
   }

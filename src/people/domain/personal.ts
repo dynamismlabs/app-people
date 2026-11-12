@@ -118,7 +118,7 @@ export function projectRelation(ctx: Ctx, scope: AccessScope, row: RelationRow, 
  */
 export function relationsFor(ctx: Ctx, scope: AccessScope, personId: string, limit = 50): Relation[] {
   const rows = ctx.db.all<RelationRow>(
-    'SELECT * FROM person_relations WHERE (person_id = ? OR related_person_id = ?) AND archived_at IS NULL ORDER BY created_at, id LIMIT ?', personId, personId, limit * 2);
+    'SELECT * FROM person_relations WHERE (person_id = ? OR related_person_id = ?) AND archived_at IS NULL ORDER BY created_at, rowid LIMIT ?', personId, personId, limit * 2);
   const out: Relation[] = [];
   for (const row of rows) {
     const relation = projectRelation(ctx, scope, row, personId);
