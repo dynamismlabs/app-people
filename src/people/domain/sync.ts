@@ -134,38 +134,36 @@ function binding(accounts: Access['accounts'], account: string, kind: 'mail' | '
   return grant.binding;
 }
 
-/** Commit records and the checkpoint in one transaction, so an interrupted step resumes from the last committed page. */
-async function inTransaction<T>(ctx: Ctx, work: () => Promise<T>): Promise<T> {
-  ctx.db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = await work();
-    ctx.db.exec('COMMIT');
-    return result;
-  } catch (error) {
-    if (ctx.db.isTransaction) ctx.db.exec('ROLLBACK');
-    throw error;
-  }
-}
-
+/**
+ * A step reads first and stores after. In Ri the step held a write
+ * transaction open while it waited on the network. On App Builder the kit
+ * writes to the same database file from its own connection (sessions, job
+ * runs), so People's writes are collected while it reads and then applied,
+ * with the checkpoint, in one short synchronous transaction. An interrupted
+ * step stores nothing and resumes from the last committed page.
+ */
 async function mailStep(ctx: Ctx, invocation: AppInvocation, account: string, accounts: Access['accounts'], deadline: number, scope: AccessScope) {
   const setup = ensureAccountSetup(ctx, account, 'mail');
   const source = accountSource(account);
   const persons = new Set<string>(), organizations = new Set<string>();
   let extracted = 0;
-  return inTransaction(ctx, async () => {
-    const owner = new Set(ownerAddresses(ctx));
-    const checkpoint = setup.checkpoint as MailCheckpoint | null;
-    if (checkpoint?.emailAddress) owner.add(checkpoint.emailAddress.toLowerCase());
-    const result = await gmailSyncStep({
-      invocation, account, binding: binding(accounts, account, 'mail'), checkpoint, windowDays: setup.historyDays, query: MAIL_QUERY, deadline,
-      now: () => ctx.now(),
-      seen: (id) => ctx.mailIndex.seen(account, id),
-      relevant: (headers: MailHeaders) => {
-        if (headers.labelIds.some((label) => BULK_LABELS.has(label))) return false;
-        if (headers.labelIds.includes('SENT')) return true;
-        return !(headers.from && isBlocked(senderDecision(ctx, headers.from.normalized)));
-      },
-      ingest: (message) => {
+  const owner = new Set(ownerAddresses(ctx));
+  const checkpoint = setup.checkpoint as MailCheckpoint | null;
+  if (checkpoint?.emailAddress) owner.add(checkpoint.emailAddress.toLowerCase());
+  const writes: (() => void)[] = [];
+  const pending = new Set<string>();
+  const result = await gmailSyncStep({
+    invocation, account, binding: binding(accounts, account, 'mail'), checkpoint, windowDays: setup.historyDays, query: MAIL_QUERY, deadline,
+    now: () => ctx.now(),
+    seen: (id) => pending.has(id) || ctx.mailIndex.seen(account, id),
+    relevant: (headers: MailHeaders) => {
+      if (headers.labelIds.some((label) => BULK_LABELS.has(label))) return false;
+      if (headers.labelIds.includes('SENT')) return true;
+      return !(headers.from && isBlocked(senderDecision(ctx, headers.from.normalized)));
+    },
+    ingest: (message) => {
+      pending.add(message.id);
+      writes.push(() => {
         if (message.sent && message.from) { rememberOwnerAddress(ctx, message.from.address); owner.add(message.from.normalized.toLowerCase()); }
         const outcome = ingestMail(ctx, source, message, owner);
         for (const person of outcome.persons) persons.add(person);
@@ -174,13 +172,16 @@ async function mailStep(ctx: Ctx, invocation: AppInvocation, account: string, ac
           if (outcome.extract && enqueueExtraction(ctx, outcome.interactionId, source, message.digest, message.receivedAt)) extracted++;
         }
         ctx.mailIndex.record(account, message.id, message.threadId, outcome.outcome, { receivedAt: message.receivedAt, digest: message.digest });
-      },
-      skip: (id, threadId) => ctx.mailIndex.record(account, id, threadId, 'skipped'),
-      removed: (id) => {
-        for (const person of markUnavailable(ctx, source, id)) persons.add(person);
-        ctx.mailIndex.record(account, id, id, 'removed');
-      },
-    });
+      });
+    },
+    skip: (id, threadId) => { pending.add(id); writes.push(() => ctx.mailIndex.record(account, id, threadId, 'skipped')); },
+    removed: (id) => writes.push(() => {
+      for (const person of markUnavailable(ctx, source, id)) persons.add(person);
+      ctx.mailIndex.record(account, id, id, 'removed');
+    }),
+  });
+  return ctx.db.tx(() => {
+    for (const write of writes) write();
     if (result.checkpoint.emailAddress) rememberOwnerAddress(ctx, result.checkpoint.emailAddress);
     ctx.accounts.commit(account, 'mail', result.checkpoint, result.checkpoint.backfill.complete ? 'ready' : 'importing', result.checkpoint.emailAddress);
     for (const person of persons) refreshPerson(ctx, person);
@@ -207,12 +208,14 @@ async function calendarStep(ctx: Ctx, invocation: AppInvocation, account: string
     return rank(left) - rank(right) || (left?.lastSuccessAt ?? '').localeCompare(right?.lastSuccessAt ?? '');
   })[0];
   const persons = new Set<string>();
-  return inTransaction(ctx, async () => {
-    const checkpoint = map[calendarId] ?? newCalendarCheckpoint(calendarId, setup.historyDays, CALENDAR_FUTURE_DAYS, ctx.now());
-    const result = await calendarSyncStep({
-      invocation, account, binding: binding(accounts, account, 'calendar'), checkpoint, now: () => ctx.now(),
-      ingest: (event) => { for (const person of ingestEvent(ctx, source, calendarId, event, checkpoint.timeZone).persons) persons.add(person); },
-    });
+  const checkpoint = map[calendarId] ?? newCalendarCheckpoint(calendarId, setup.historyDays, CALENDAR_FUTURE_DAYS, ctx.now());
+  const writes: (() => void)[] = [];
+  const result = await calendarSyncStep({
+    invocation, account, binding: binding(accounts, account, 'calendar'), checkpoint, now: () => ctx.now(),
+    ingest: (event) => { writes.push(() => { for (const person of ingestEvent(ctx, source, calendarId, event, checkpoint.timeZone).persons) persons.add(person); }); },
+  });
+  return ctx.db.tx(() => {
+    for (const write of writes) write();
     map[calendarId] = result.checkpoint;
     const complete = calendars.every((id) => map[id]?.completedAt && !map[id]?.pageToken);
     ctx.accounts.commit(account, 'calendar', map, complete ? 'ready' : 'importing');

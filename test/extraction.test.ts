@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { EXTRACTION_VERSION } from '../src/domain/ai.js';
-import { call, job, owner, setup, teardown, chat } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { EXTRACTION_VERSION } from '../src/people/domain/ai.js';
+import { call, job, owner, setup, teardown, chat, createScope } from './helpers.js';
 import { fakeHost, mail, OWNER, type FakeAccount } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -177,7 +177,7 @@ describe('relationship extraction', () => {
     const stale = await call('get_briefing', { subjectKind: 'person', subjectId: maya.id }, me);
     expect(stale.origin).toBe('saved_records');
     expect(stale.status).toBe('stale');
-    const scope = await call('create_scope', { actorId: 'chat:n', sources: ['account:personal'], operations: ['read'] }, me);
+    const scope = await createScope({ actorId: 'chat:n', sources: ['account:personal'], operations: ['read'] }, me);
     const narrow = await call('get_briefing', { subjectKind: 'person', subjectId: maya.id }, chat('n', scope.scopeRef));
     expect(narrow.origin).toBe('saved_records');
   });

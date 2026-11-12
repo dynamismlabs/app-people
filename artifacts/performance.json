@@ -1,0 +1,109 @@
+{
+  "measuredAt": "2026-11-12T23:21:44.376Z",
+  "volume": {
+    "people": 10000,
+    "companies": 1000,
+    "interactions": 100000
+  },
+  "seedSeconds": 24.7,
+  "node": "v24.2.0",
+  "platform": "darwin arm64",
+  "results": {
+    "list_people first page by name": {
+      "p50": 4.6,
+      "p95": 6.3,
+      "max": 6.6,
+      "runs": 30
+    },
+    "list_people with each sort": {
+      "p50": 6.7,
+      "p95": 17.1,
+      "max": 17.9,
+      "runs": 40
+    },
+    "list_people paging 100 per page": {
+      "p50": 8.5,
+      "p95": 16.8,
+      "max": 21.9,
+      "runs": 30
+    },
+    "list_people filtered by company, list and last exchange": {
+      "p50": 23.7,
+      "p95": 78.5,
+      "max": 83.5,
+      "runs": 30
+    },
+    "list_people with next meeting filter": {
+      "p50": 8.3,
+      "p95": 9.6,
+      "max": 9.9,
+      "runs": 20
+    },
+    "list_people with follow-up filter": {
+      "p50": 8.6,
+      "p95": 10.4,
+      "max": 10.4,
+      "runs": 20
+    },
+    "search_people": {
+      "p50": 2.4,
+      "p95": 19.6,
+      "max": 22.1,
+      "runs": 40
+    },
+    "get_person": {
+      "p50": 0.5,
+      "p95": 0.7,
+      "max": 0.9,
+      "runs": 40
+    },
+    "list_interactions person timeline": {
+      "p50": 1.5,
+      "p95": 3.8,
+      "max": 6.4,
+      "runs": 40
+    },
+    "list_organizations": {
+      "p50": 3.4,
+      "p95": 4.9,
+      "max": 6,
+      "runs": 30
+    },
+    "get_organization": {
+      "p50": 1.2,
+      "p95": 1.5,
+      "max": 1.6,
+      "runs": 30
+    },
+    "get_today": {
+      "p50": 12.5,
+      "p95": 14.3,
+      "max": 15.4,
+      "runs": 20
+    },
+    "chat list_people by name": {
+      "p50": 41.3,
+      "p95": 55.4,
+      "max": 60.5,
+      "runs": 30
+    },
+    "chat list_people by last exchange": {
+      "p50": 46.2,
+      "p95": 51.6,
+      "max": 57.6,
+      "runs": 30
+    },
+    "chat search_people": {
+      "p50": 0.5,
+      "p95": 3.3,
+      "max": 4,
+      "runs": 30
+    },
+    "chat get_person": {
+      "p50": 0.6,
+      "p95": 1.5,
+      "max": 2.1,
+      "runs": 30
+    }
+  }
+}

@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import { calendarEvent, gmailMetadata, gmailRaw, type FakeEvent, type FakeMail } from '../src/fixtures/mail.js';
+import { AppError } from '../src/lib/contract.js';
+import { calendarEvent, gmailMetadata, gmailRaw, type FakeEvent, type FakeMail } from '../src/people/fixtures/mail.js';
 
 /**
  * Fictional connector and Ri capabilities with the shapes the host returns.

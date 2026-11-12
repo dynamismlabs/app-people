@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
+import type { Ctx } from '../src/people/domain/context.js';
 import { call, job, owner, setup, teardown, chat } from './helpers.js';
 import { fakeHost, mail, OWNER, OWNER_WORK, type FakeAccount } from './fakes.js';
 

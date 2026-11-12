@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { call, chat, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { call, chat, owner, setup, teardown, createScope } from './helpers.js';
 
 let ctx: Ctx | null = null;
 beforeEach(async () => { ctx = await setup(); });
@@ -66,8 +66,8 @@ describe('capture from chat', () => {
   it('a read-only chat is refused, and a chat never captures onto someone it can\'t see', async () => {
     const w = await people();
     const side = (await call('save_collection', { label: 'Side project' }, w.me)).key;
-    const scoped = chat('c', (await call('create_scope', { actorId: 'chat:c', sources: [side, 'manual'], operations: ['read'] }, w.me)).scopeRef);
-    const writer = chat('d', (await call('create_scope', { actorId: 'chat:d', sources: [side], operations: ['read', 'write'] }, w.me)).scopeRef);
+    const scoped = chat('c', (await createScope({ actorId: 'chat:c', sources: [side, 'manual'], operations: ['read'] }, w.me)).scopeRef);
+    const writer = chat('d', (await createScope({ actorId: 'chat:d', sources: [side], operations: ['read', 'write'] }, w.me)).scopeRef);
     // Chat c may read but not write: capturing is refused outright.
     await expect(call('capture_about_person', { personId: w.jordan.id, text: 'Jordan moved.' }, scoped)).rejects.toThrow();
     // Chat d may write only its own collection and can't see Jordan in the main one.

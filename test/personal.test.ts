@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { parseBirthday, parseVcards, rowsFromTable, parseCsv } from '../src/domain/imports/parse.js';
-import { daysUntil } from '../src/domain/personal.js';
-import { call, chat, expectCode, job, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { parseBirthday, parseVcards, rowsFromTable, parseCsv } from '../src/people/domain/imports/parse.js';
+import { daysUntil } from '../src/people/domain/personal.js';
+import { call, chat, expectCode, job, owner, setup, teardown, createScope } from './helpers.js';
 import { fakeHost, mail, OWNER } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -21,8 +21,8 @@ async function world() {
   const me = owner(['personal'], host.capability);
   const maya = (await call('list_people', { limit: 10 }, me)).items[0] as { id: string; revision: number };
   const jordan = (await call('save_person', { name: 'Jordan Bell' }, me)).record as { id: string };
-  const accountOnly = chat('a', (await call('create_scope', { actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
-  const withRecords = chat('b', (await call('create_scope', { actorId: 'chat:b', sources: ['account:personal', 'manual'], operations: ['read', 'write'] }, me)).scopeRef);
+  const accountOnly = chat('a', (await createScope({ actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
+  const withRecords = chat('b', (await createScope({ actorId: 'chat:b', sources: ['account:personal', 'manual'], operations: ['read', 'write'] }, me)).scopeRef);
   return { me, maya, jordan, accountOnly, withRecords };
 }
 const revisionOf = async (id: string, caller = owner()) => (await call('get_person', { id }, caller)).person.revision as number;

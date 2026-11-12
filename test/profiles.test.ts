@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { call, chat, job, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { call, chat, job, owner, setup, teardown, createScope } from './helpers.js';
 import { fakeHost, mail, OWNER, type FakeAccount } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -75,7 +75,7 @@ describe('living profile', () => {
     expect(profile.sections[0].items[0].evidenceIds.length + profile.sections[0].items[0].noteIds.length).toBeGreaterThan(0);
     expect(JSON.stringify(profile)).not.toContain('invented line');
     // A chat holding the account still can't read a profile built from the owner's notes.
-    const narrow = chat('a', (await call('create_scope', { actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
+    const narrow = chat('a', (await createScope({ actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
     const forChat = await call('get_profile', { personId: maya.id }, narrow);
     expect(forChat.sections).toEqual([]);
     expect(forChat.status).toBe('none');
@@ -136,7 +136,7 @@ describe('living profile', () => {
     const ownerView = await call('get_profile', { personId: maya.id }, me);
     expect(ownerView.status === 'ready' || ownerView.status === 'stale').toBe(true);
     expect(ownerView.statusLabel).toMatch(/from owner@personal\.example/);
-    const reader = chat('a', (await call('create_scope', { actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
+    const reader = chat('a', (await createScope({ actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me)).scopeRef);
     expect((await call('get_profile', { personId: maya.id }, reader)).sections.length).toBeGreaterThan(0);
     // Running the schedule again later never sends the owner's note.
     await drain(schedule);

@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
-import type { Ctx } from '../src/domain/context.js';
-import { refreshPerson } from '../src/domain/people.js';
-import { refreshOrganization } from '../src/domain/organizations.js';
-import { sortKey } from '../src/domain/text.js';
-import { setSearchRow } from '../src/domain/search.js';
-import { call, chat, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { refreshPerson } from '../src/people/domain/people.js';
+import { refreshOrganization } from '../src/people/domain/organizations.js';
+import { sortKey } from '../src/people/domain/text.js';
+import { setSearchRow } from '../src/people/domain/search.js';
+import { call, chat, owner, setup, teardown, createScope } from './helpers.js';
 
 /**
  * Release target: 10,000 people, 1,000 companies and 100,000 interactions.
@@ -153,7 +153,7 @@ describe('Large synthetic records meet the stated bounded-query and measured lat
   }, 300_000);
 
   it('a narrower chat\'s scoped list, search and detail calls stay under 300 ms at p95', async () => {
-    const scope = await call('create_scope', { actorId: 'chat:perf', sources: ['account:perf-b', 'manual'], operations: ['read'] }, me);
+    const scope = await createScope({ actorId: 'chat:perf', sources: ['account:perf-b', 'manual'], operations: ['read'] }, me);
     const narrow = chat('perf', scope.scopeRef);
     expect((await measure('chat list_people by name', 30, () => call('list_people', { limit: 50 }, narrow))).p95).toBeLessThan(300);
     expect((await measure('chat list_people by last exchange', 30, () => call('list_people', { limit: 50, sort: { key: 'last_exchange', direction: 'desc' } }, narrow))).p95).toBeLessThan(300);

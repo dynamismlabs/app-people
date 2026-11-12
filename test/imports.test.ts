@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { parseCsv, parseVcards, rowsFromTable } from '../src/domain/imports/parse.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { parseCsv, parseVcards, rowsFromTable } from '../src/people/domain/imports/parse.js';
 import { call, expectCode, owner, setup, teardown, chat } from './helpers.js';
 
 let ctx: Ctx | null = null;

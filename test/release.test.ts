@@ -2,9 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import type { Ctx } from '../src/domain/context.js';
-import { openContext, useContext } from '../src/runtime.js';
-import { call, chat, job, owner, setup, teardown, tempDir, INSTANCE, expectCode, state } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { backupAndRestore, restoreDatabaseCopy, call, chat, job, owner, setup, teardown, tempDir, INSTANCE, expectCode, state, createScope } from './helpers.js';
 import { fakeHost, mail, OWNER, OWNER_WORK, type FakeAccount } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -30,7 +29,7 @@ describe('People release requirements', () => {
     await call('save_note', { subjectKind: 'person', subjectId: friend.id, body: 'Loves film photography.' }, me);
     const follow = await call('create_follow_up', { subject: { kind: 'person', id: friend.id }, title: 'Send the photos', dueAt: day(2), operationId: randomUUID() }, me);
     expect(follow.link.status).toBe('linked');
-    const scope = await call('create_scope', { actorId: 'chat:friends', sources: ['account:personal', 'manual'], operations: ['read'] }, me);
+    const scope = await createScope({ actorId: 'chat:friends', sources: ['account:personal', 'manual'], operations: ['read'] }, me);
     const view = (await call('save_view', { label: 'Recent friends', recordKind: 'person', filters: { lastExchange: { withinDays: 7 } } }, me)).record;
     const today = await call('get_today', {}, me);
     expect(today.iOwe.length).toBe(1);
@@ -242,14 +241,9 @@ describe('People release requirements', () => {
     const maya = (await call('list_people', { limit: 5 }, me)).items[0];
     const fact = (await call('get_person', { id: maya.id }, me)).facts[0];
     await call('review_fact', { id: fact.id, expectedRevision: fact.revision, decision: 'reject' }, me);
-    // Backup and restore: copy the database and its evidence files, open the copy.
-    const backup = tempDir('ri-people-backup-');
-    ctx!.db.exec(`VACUUM INTO '${path.join(backup, 'records.db')}'`);
-    if (fs.existsSync(path.join(state.dataDir, 'blobs'))) fs.cpSync(path.join(state.dataDir, 'blobs'), path.join(backup, 'blobs'), { recursive: true });
-    const restored = await openContext({ dataDir: backup, instanceId: INSTANCE }, { now: () => new Date() });
-    useContext(restored);
-    ctx!.close();
-    ctx = restored;
+    // Restore a copy of the database, as the kit's change command does on a rollback.
+    // (The kit's portable backup can't restore People yet: see the last test and docs/parity.md.)
+    ctx = await restoreDatabaseCopy();
     await call('delete_source_data', { source: 'account:p', confirm: true }, me);
     await steps(scheduled);
     expect((await call('list_commitments', { filter: 'suggestions', limit: 10 }, me)).items).toEqual([]);
@@ -314,7 +308,7 @@ describe('People release requirements', () => {
     await steps(job([{ account: 'p' }, { account: 'w' }], host.capability));
     const zed = (await call('list_people', { limit: 5, filters: { text: 'Zed' } }, me)).items[0];
     await call('save_note', { subjectKind: 'person', subjectId: zed.id, body: 'Independent note about Zed.' }, me);
-    const scope = await call('create_scope', { actorId: 'chat:w', sources: ['account:w'], operations: ['read'] }, me);
+    const scope = await createScope({ actorId: 'chat:w', sources: ['account:w'], operations: ['read'] }, me);
     const narrow = chat('w', scope.scopeRef);
     const timeline = await call('list_interactions', { subjectKind: 'person', subjectId: zed.id, limit: 10 }, narrow);
     expect(JSON.stringify(timeline)).not.toMatch(/Quarterly|Secret revenue/);
@@ -375,10 +369,7 @@ describe('People release requirements', () => {
     expect(JSON.parse(files.notes).records[0].body).toBe('Ask before introductions.');
     expect(JSON.parse(files.decisions).formatVersion).toBe(2);
     // Full restore through the snapshot boundary keeps the same IDs.
-    const backup = tempDir('ri-people-restore-');
-    ctx!.db.exec(`VACUUM INTO '${path.join(backup, 'records.db')}'`);
-    const restored = await openContext({ dataDir: backup, instanceId: INSTANCE }, { now: () => new Date() });
-    useContext(restored); ctx!.close(); ctx = restored;
+    ctx = await restoreDatabaseCopy();
     const back = await call('get_person', { id: person.id }, me);
     expect(back.lists[0].id).toBe(list.id);
     expect(back.taskLinks[0].taskId).toBe(follow.link.taskId);
@@ -389,5 +380,16 @@ describe('People release requirements', () => {
     await call('delete_record', { kind: 'person', id: person.id, expectedRevision: archived.person.revision, mode: 'remove', notes: 'delete', suppress: true }, me);
     expect(host.tasks.size).toBe(1);
     expect([...host.tasks.values()][0].deleted).toBeUndefined();
+  });
+
+  // Kit gap (docs/parity.md): the kit's portable backup copies every table it finds, including
+  // the internal tables SQLite keeps for People's full-text search, and restoring them fails
+  // ("object name reserved for internal use"). This fails until the kit handles FTS5 tables;
+  // when it passes, turn it into a normal test.
+  it.fails('restores People from the kit\'s installation backup', async () => {
+    const me = owner();
+    await call('save_person', { name: 'Maya Chen', identifiers: [{ kind: 'email', value: 'maya@northstar.example' }] }, me);
+    ctx = await backupAndRestore();
+    expect((await call('search_people', { text: 'Maya', limit: 5 }, me)).total).toBe(1);
   });
 });

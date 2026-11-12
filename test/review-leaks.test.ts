@@ -4,10 +4,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { Ctx } from '../src/domain/context.js';
-import { openContext, useContext } from '../src/runtime.js';
-import { setSearchRow } from '../src/domain/search.js';
-import { call, chat, expectCode, INSTANCE, job, owner, setup, state, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { setSearchRow } from '../src/people/domain/search.js';
+import { call, chat, expectCode, INSTANCE, job, owner, restart, setup, state, teardown, createScope, revokeScope } from './helpers.js';
 import { fakeHost, mail, OWNER } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -20,14 +19,14 @@ const me = owner();
 describe('a cached write is not replayed after the caller\'s scope narrows', () => {
   it('refuses a replay after the scope is revoked and replaced by a narrower writable one, and writes nothing twice', async () => {
     const circle = (await call('save_collection', { label: 'Private circle' }, me)).key;
-    const broad = await call('create_scope', { actorId: 'chat:a', sources: ['manual', circle], operations: ['read', 'write'] }, me);
+    const broad = await createScope({ actorId: 'chat:a', sources: ['manual', circle], operations: ['read', 'write'] }, me);
     const invocationId = randomUUID();
     const input = { name: 'Robin Vale', collection: circle, identifiers: [{ kind: 'email', value: 'robin@private.example' }] };
     const first = await call('save_person', input, chat('a', broad.scopeRef), invocationId);
     expect(first.record.primaryEmail).toBe('robin@private.example');
     expect(first.record.sourceLabels).toContain('Private circle');
-    await call('revoke_scope', { scopeRef: broad.scopeRef }, me);
-    const narrow = await call('create_scope', { actorId: 'chat:a', sources: ['manual'], operations: ['read', 'write'] }, me);
+    await revokeScope({ scopeRef: broad.scopeRef }, me);
+    const narrow = await createScope({ actorId: 'chat:a', sources: ['manual'], operations: ['read', 'write'] }, me);
     await expectCode(call('save_person', input, chat('a', narrow.scopeRef), invocationId), 'conflict');
     expect((await call('list_people', { limit: 50 }, me)).items.filter((item: { name: string }) => item.name === 'Robin Vale')).toHaveLength(1);
   });
@@ -37,7 +36,7 @@ describe('a cached write is not replayed after the caller\'s scope narrows', () 
     await call('apply_import', { previewId: preview.previewId, digest: preview.digest }, me);
     const imported = (await call('list_sources', {}, me)).imports[0].source as string;
     const kai = (await call('list_people', { limit: 50 }, me)).items.find((item: { name: string }) => item.name === 'Kai Moreno');
-    const grant = await call('create_scope', { actorId: 'chat:b', sources: ['manual', imported], operations: ['read', 'write'] }, me);
+    const grant = await createScope({ actorId: 'chat:b', sources: ['manual', imported], operations: ['read', 'write'] }, me);
     const invocationId = randomUUID();
     const input = { id: kai.id, expectedRevision: kai.revision, headline: 'Researcher' };
     const first = await call('save_person', input, chat('b', grant.scopeRef), invocationId);
@@ -133,7 +132,7 @@ describe('a private pipeline stays private through shared opportunities', () => 
     const fieldwork = (await call('save_organization', { name: 'Fieldwork' }, me)).record;
     const pipeline = (await call('save_pipeline', { name: 'Secret acquisitions', template: 'client_work', collection: deals }, me)).record;
     const opportunity = (await call('save_opportunity', { title: 'Shared onboarding', pipelineId: pipeline.id, organizationId: fieldwork.id, personIds: [jordan.id], nextAction: 'Send the proposal', nextActionDate: '2026-10-20', collection: 'manual' }, me)).record;
-    const grant = await call('create_scope', { actorId: 'chat:m', sources: ['manual'], operations: ['read'] }, me);
+    const grant = await createScope({ actorId: 'chat:m', sources: ['manual'], operations: ['read'] }, me);
     return { deals, jordan, fieldwork, pipeline, opportunity, m: chat('m', grant.scopeRef) };
   }
 
@@ -214,7 +213,7 @@ describe('search never indexes a private company name under a shared source', ()
     const jordan = (await call('save_person', { name: 'Jordan Bell' }, me)).record;
     const hidden = (await call('save_organization', { name: 'Hidden Ventures', collection: circle }, me)).record;
     await call('save_affiliation', { personId: jordan.id, organizationId: hidden.id, role: 'Founder', collection: 'manual' }, me);
-    const grant = await call('create_scope', { actorId: 'chat:s', sources: ['manual'], operations: ['read'] }, me);
+    const grant = await createScope({ actorId: 'chat:s', sources: ['manual'], operations: ['read'] }, me);
     return { circle, jordan, hidden, s: chat('s', grant.scopeRef) };
   }
 
@@ -238,9 +237,7 @@ describe('search never indexes a private company name under a shared source', ()
     ctx!.db.tx(() => setSearchRow(ctx!, `person:${w.jordan.id}:manual`, 'person', w.jordan.id, 'manual', 'Jordan Bell Founder Hidden Ventures'));
     ctx!.settings.set('search_index_version', 0);
     expect((await call('search_people', { text: 'Hidden Ventures', limit: 20 }, w.s)).total).toBe(1);
-    ctx!.close();
-    ctx = await openContext({ dataDir: state.dataDir, instanceId: INSTANCE });
-    useContext(ctx);
+    ctx = await restart();
     expect((await call('search_people', { text: 'Hidden Ventures', limit: 20 }, w.s)).total).toBe(0);
     expect((await call('search_people', { text: 'Hidden Ventures', limit: 20 }, me)).total).toBe(1);
   });

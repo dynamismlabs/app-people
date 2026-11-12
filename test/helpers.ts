@@ -2,15 +2,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { AppError, ContractValidator, type InvocationAccess } from '@ri/app-kit/contract';
-import { generateContract, type AppInvocation } from '@ri/app-kit/sdk';
-import { definition } from '../src/actions.js';
-import { openContext, useContext } from '../src/runtime.js';
-import type { Ctx } from '../src/domain/context.js';
+import { SetupRequired, SourceUnavailable, type Connection, type Context, type ConnectorSource, type Platform } from '@app-builder/core';
+import { backupNode, createTestConnection, openNodePlatform, restoreNode } from '@app-builder/core/node';
+import { AppError, type AppPrincipal } from '../src/lib/contract.js';
+import { application } from '../src/app.js';
+import { definition } from '../src/people/actions.js';
+import { bindContext, ctx as peopleContext, HUB_TOOLS, openContext, useContext } from '../src/people/runtime.js';
+import type { Ctx } from '../src/people/domain/context.js';
 
+/**
+ * People's tests, on App Builder. Each test gets a disposable data directory
+ * opened by the kit (its migrations and People's), and People's context on
+ * the kit's own connection. `call` runs an action the way the kit does for
+ * the caller: the person's browser (owner), an assistant connection with the
+ * sources chosen for it, or the job. Hub calls go to a fake hub that answers
+ * with Ri's tool names (test/fakes.ts).
+ */
 const created: string[] = [];
 /** A directory created with mkdtemp. Only these are ever removed. */
-export function tempDir(prefix = 'ri-people-test-') {
+export function tempDir(prefix = 'people-test-') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   created.push(dir);
   return dir;
@@ -19,77 +29,198 @@ export function cleanup() {
   for (const dir of created.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-export const state = { dataDir: '' };
+export const state: { dataDir: string; platform: Platform | null; close: (() => void) | null } = { dataDir: '', platform: null, close: null };
 export const INSTANCE = '0194d7a0-0000-4000-8000-0000000000ff';
 export const clock = { now: new Date('2026-10-15T15:00:00.000Z') };
 export function advance(ms: number) { clock.now = new Date(clock.now.getTime() + ms); }
 
 export async function setup(options: { now?: string; realTime?: boolean } = {}): Promise<Ctx> {
   clock.now = new Date(options.now ?? '2026-10-15T15:00:00.000Z');
-  const dir = tempDir();
-  state.dataDir = dir;
-  const ctx = await openContext({ dataDir: dir, instanceId: INSTANCE }, { now: options.realTime ? () => new Date() : () => clock.now });
-  useContext(ctx);
+  return open(tempDir(), options.realTime ? () => new Date() : () => clock.now);
+}
+async function open(dataDir: string, now?: () => Date): Promise<Ctx> {
+  const opened = await openNodePlatform(application, { dataDir, baseURL: 'http://127.0.0.1:4364', secret: 'test-secret-'.padEnd(64, 'x') });
+  const ctx = openContext({ connection: opened.connection, instanceId: INSTANCE }, { now });
+  bindContext(opened.platform, ctx);
+  state.platform = opened.platform;
+  state.close = opened.close;
+  state.dataDir = dataDir;
   return ctx;
 }
+/** Stop and start again on the same data, as the service does after a restart. */
+export async function restart(now: () => Date = () => new Date()): Promise<Ctx> {
+  state.close?.();
+  return open(state.dataDir, now);
+}
+/**
+ * A consistent copy of the database file, opened as a new installation: what
+ * the kit's change command snapshots before switching and puts back on a
+ * rollback.
+ */
+export async function restoreDatabaseCopy(now: () => Date = () => new Date()): Promise<Ctx> {
+  const target = tempDir('people-copy-');
+  peopleContext().db.exec(`VACUUM INTO '${path.join(target, 'data.sqlite').replaceAll("'", "''")}'`);
+  state.close?.();
+  return open(target, now);
+}
+/** The kit's installation backup, restored into a new empty data directory, and People opened there. */
+export async function backupAndRestore(now: () => Date = () => new Date()): Promise<Ctx> {
+  const backup = path.join(tempDir('people-backup-'), 'backup');
+  const target = path.join(tempDir('people-restore-'), 'data');
+  await backupNode(state.platform!, application.config.id, backup);
+  await restoreNode(backup, target, application.config.id);
+  state.close?.();
+  return open(target, now);
+}
+
 export function teardown(ctx: Ctx | null) {
-  ctx?.close();
+  void ctx;
   useContext(null);
+  state.close?.();
+  state.platform = null;
+  state.close = null;
+  delete process.env.PEOPLE_PREVIEW;
   cleanup();
 }
 
 export type Capability = (name: string, input: unknown, target?: unknown) => Promise<unknown>;
-export interface Caller { principal: AppInvocation['principal']; audience: AppInvocation['audience']; access: InvocationAccess | null; capability?: Capability }
+export interface Grant { account: string; binding: 'mail' | 'calendar' }
+export interface Caller {
+  principal: AppPrincipal;
+  audience: 'user' | 'agent' | 'schedule';
+  /** The accounts the hub lends People while this caller runs. */
+  accounts: Grant[];
+  /** For a chat: the connection made for it (createScope). */
+  scopeRef?: string | null;
+  capability?: Capability;
+}
 const noCapability: Capability = async (name) => { throw new AppError('forbidden', `No capability ${name} in this test`); };
 
-export const owner = (accounts: string[] = [], capability?: Capability, automatic = false): Caller => ({
+export const owner = (accounts: string[] = [], capability?: Capability, _automatic = false): Caller => ({
   principal: { kind: 'owner-ui', id: 'owner' }, audience: 'user', capability,
-  access: { protocol: 'ri-access-v1', actorId: 'owner-ui:owner', scopeRef: null, accounts: accounts.flatMap((account) => [{ account, binding: 'mail', actions: [], automatic }, { account, binding: 'calendar', actions: [], automatic }]) },
+  accounts: accounts.flatMap((account) => [{ account, binding: 'mail' as const }, { account, binding: 'calendar' as const }]),
 });
+/** The fictional preview (PEOPLE_PREVIEW=1). */
 export const fixture = (audience: 'user' | 'agent' = 'user'): Caller => ({
-  principal: { kind: 'fixture', id: INSTANCE, fixtureAudience: audience }, audience,
-  access: { protocol: 'ri-access-v1', actorId: `fixture:${INSTANCE}`, scopeRef: null, accounts: [{ account: 'fixture-account', binding: 'mail', actions: [], automatic: false }] },
+  principal: { kind: 'fixture', id: INSTANCE, fixtureAudience: audience }, audience, accounts: [],
 });
 export const chat = (id: string, scopeRef: string | null, capability?: Capability): Caller => ({
-  principal: { kind: 'chat', id }, audience: 'agent', capability,
-  access: { protocol: 'ri-access-v1', actorId: `chat:${id}`, scopeRef, accounts: [] },
+  principal: { kind: 'chat', id }, audience: 'agent', capability, scopeRef, accounts: [],
 });
 export const job = (accounts: { account: string; binding?: 'mail' | 'calendar' }[], capability?: Capability): Caller => ({
-  principal: { kind: 'job', id: 'schedule-1' }, audience: 'schedule', capability,
-  access: { protocol: 'ri-access-v1', actorId: 'job:schedule-1', scopeRef: null, accounts: accounts.map((item) => ({ account: item.account, binding: item.binding ?? 'mail', actions: [], automatic: true })) },
+  principal: { kind: 'job', id: 'update_people' }, audience: 'schedule', capability,
+  accounts: accounts.map((item) => ({ account: item.account, binding: item.binding ?? 'mail' })),
 });
 
-const contract = generateContract(definition);
-const validator = new ContractValidator();
+/** Connections made for chats: the kit records each one's choice, as the consent screen does. */
+const connections = new Map<string, { actorId: string; clientId: string; accessToken: string }>();
+/** In Ri the owner made a scope for a chat. On App Builder that is an OAuth connection with the choice from the consent screen. */
+export async function createScope(input: { actorId: string; sources: string[]; operations: ('read' | 'write')[]; label?: string }, _caller?: Caller) {
+  const made = await createTestConnection(state.platform!, { name: input.label ?? input.actorId, sources: input.sources, write: input.operations.includes('write') });
+  connections.set(made.clientId, { actorId: input.actorId, ...made });
+  return { scopeRef: made.clientId, accessToken: made.accessToken };
+}
+/** Disconnecting in the app's Settings removes the connection and its choice. */
+export async function revokeScope(input: { scopeRef: string }, _caller?: Caller) {
+  await state.platform!.driver.query({ sql: 'DELETE FROM oauth_applications WHERE client_id = ?', params: [input.scopeRef], method: 'run' });
+  return { status: 'saved' as const };
+}
+
+/** The hub as Ri answers it, over the old fake capability: Ri's tool names, the account argument and Ri's errors as the kit's client reports them. */
+export function hubSource(capability: Capability, accounts: Grant[]): ConnectorSource {
+  const back = Object.fromEntries(Object.entries(HUB_TOOLS).map(([name, tool]) => [tool, name]));
+  return {
+    kind: 'hub',
+    async listTools() { return Object.values(HUB_TOOLS); },
+    async callTool(tool, args) {
+      const name = back[tool];
+      if (!name) throw new Error(`Tool ${tool} not found`);
+      const kind = tool.startsWith('gmail__') ? 'mail' : tool.startsWith('google_calendar__') ? 'calendar' : null;
+      const { account: given, ...rest } = args as Record<string, unknown> & { account?: string };
+      const choices = kind ? accounts.filter((grant) => grant.binding === kind).map((grant) => grant.account) : [];
+      if (kind && !given && choices.length > 1) throw new SetupRequired(`Choose which account to use (${choices.join(', ')}). Pass account.`);
+      const account = given ?? (kind ? choices[0] : undefined);
+      try { return await capability(name, rest, account ? { account } : undefined); }
+      catch (error) {
+        const code = (error as AppError)?.code;
+        const message = (error as Error).message;
+        if (code === 'revoked' || code === 'forbidden') throw new SetupRequired(code === 'forbidden' ? `Not allowed: ${message}` : message);
+        if (code === 'busy' || code === 'timeout') throw new SourceUnavailable(message);
+        if (code === 'not_found') throw new Error(`not_found: ${message}`);
+        if (code === 'unsupported') throw new Error(`unsupported: ${message}`);
+        throw error;
+      }
+    },
+  };
+}
+
+/** What the hub lends People for this call, as the job's last check found it. */
+function lend(ctx: Ctx, accounts: Grant[]) {
+  const of = (binding: 'mail' | 'calendar') => {
+    const list = [...new Set(accounts.filter((grant) => grant.binding === binding).map((grant) => grant.account))];
+    return list.length ? { accounts: list, multi: list.length > 1 } : null;
+  };
+  ctx.settings.set('hub.accounts', { mail: of('mail'), calendar: of('calendar'), tools: Object.values(HUB_TOOLS), checkedAt: ctx.now().toISOString(), error: null });
+}
+
 export const calls: { name: string; input: unknown; principal: string }[] = [];
+const kitActions = new Map(application.actions.map((action) => [action.name, action]));
+
+function kitContext(caller: Caller): Context {
+  const platform = state.platform!;
+  const base = { platform, viewer: { id: 'local-owner', name: 'You', email: 'owner@localhost' }, request: new Request('http://127.0.0.1:4364/api/trpc/run') };
+  if (caller.principal.kind === 'chat') {
+    const made = caller.scopeRef ? connections.get(caller.scopeRef) : undefined;
+    // A connection belongs to the chat it was made for: another chat can't use its token.
+    const own = made && made.actorId === `chat:${caller.principal.id}` ? made : undefined;
+    const connection: Connection = { clientId: own?.clientId ?? `missing-${caller.principal.id}`, name: caller.principal.id, sources: [], write: false, collections: false };
+    return { ...base, connection, _choice: own?.clientId ?? null } as Context;
+  }
+  if (caller.principal.kind === 'job') {
+    return { ...base, job: { name: 'update_people', runId: `update_people@${new Date().toISOString()}`, scheduledFor: new Date().toISOString(), attempt: 1, checkpoint: undefined, saveCheckpoint: async () => {} } };
+  }
+  return base;
+}
+
+/** The connection's current choice, read back from the kit as each MCP request does. */
+async function withChoice(kit: Context): Promise<Context> {
+  const id = (kit as Context & { _choice?: string | null })._choice;
+  if (!kit.connection) return kit;
+  // The kit refuses a token without a recorded choice, or one made for another chat, before any action runs.
+  if (!id) throw new AppError('forbidden', "This caller's access could not be verified");
+  const row = await state.platform!.driver.query({ sql: 'SELECT sources, can_write FROM connection_access WHERE client_id = ?', params: [id], method: 'get' });
+  const [sources, write] = row.rows as [string | null, number] | [];
+  // Disconnected in Settings: the kit answers 401 and Ri shows Reconnect.
+  if (sources === undefined) throw new AppError('revoked', 'This connection was disconnected');
+  return { ...kit, connection: { ...kit.connection, sources: sources ? JSON.parse(sources) : null, write: !!write } };
+}
 
 /**
- * Invoke a handler the way the runtime does: check the audience, validate the
- * input against the generated contract, parse it with the action's schema,
- * run it, and validate the output against the contract.
+ * Invoke an action as the kit does for this caller: check who may call it,
+ * refuse writes on a read-only connection, parse the input, run it through
+ * People's adapter and parse the output.
  */
 export async function call<T = any>(name: string, input: unknown, caller: Caller, invocationId: string = randomUUID()): Promise<T> {
-  const action = definition.actions.find((item) => item.name === name);
-  const descriptor = contract.actions.find((item) => item.name === name);
-  if (!action || !descriptor) throw new Error(`Unknown action ${name}`);
-  if (!descriptor.audience.includes(caller.audience)) throw new AppError('forbidden', 'This action is unavailable to this caller');
-  validator.check(descriptor.inputSchema, input, `Invalid input for ${name}`);
-  const parsed = action.input.parse(input);
-  const controller = new AbortController();
-  const invocation: AppInvocation = {
-    id: invocationId, principal: caller.principal, audience: caller.audience, grantRevision: 1, deadline: Date.now() + descriptor.timeoutMs,
-    packageDigest: 'a'.repeat(64), access: caller.access, signal: controller.signal,
-    capability: (capabilityName, capabilityInput, target) => (caller.capability ?? noCapability)(capabilityName, capabilityInput, target),
-  };
+  const action = kitActions.get(name);
+  const people = definition.actions.find((item) => item.name === name);
+  if (!action || !people) throw new Error(`Unknown action ${name}`);
+  if (!people.audience.includes(caller.audience)) throw new AppError('forbidden', 'This action is unavailable to this caller');
+  lend(peopleContext(), caller.accounts);
+  state.platform!.connectors = hubSource(caller.capability ?? noCapability, caller.accounts);
+  const kit = await withChoice(kitContext(caller));
+  if (action.effect !== 'read' && kit.connection && !kit.connection.write) throw new AppError('forbidden', `${kit.connection.name} can read but not make changes`);
+  if (caller.principal.kind === 'fixture') process.env.PEOPLE_PREVIEW = '1'; else delete process.env.PEOPLE_PREVIEW;
   calls.push({ name, input, principal: `${caller.principal.kind}:${caller.principal.id}` });
-  const result = await action.handler(parsed, invocation);
   try {
-    validator.check(descriptor.outputSchema, JSON.parse(JSON.stringify(result)), `Invalid output for ${name}`);
+    const result = await action.execute(kit, { ...(input as object), ...(invocationId ? { requestId: invocationId } : {}) });
+    return JSON.parse(JSON.stringify(result)) as T;
   } catch (error) {
-    const detail = action.output.safeParse(result);
-    throw new Error(`Invalid output for ${name}: ${detail.success ? 'schema mismatch' : JSON.stringify(detail.error.issues).slice(0, 1500)}`);
+    // The adapter hands People's errors to the kit; tests read People's own code.
+    const cause = (error as { cause?: unknown }).cause;
+    throw cause instanceof AppError ? cause : error;
+  } finally {
+    delete process.env.PEOPLE_PREVIEW;
   }
-  return result as T;
 }
 
 export async function expectCode(promise: Promise<unknown>, code: string) {
@@ -100,4 +231,4 @@ export async function expectCode(promise: Promise<unknown>, code: string) {
   throw new Error(`Expected ${code}, but the call succeeded`);
 }
 
-export { contract, definition };
+export { definition };

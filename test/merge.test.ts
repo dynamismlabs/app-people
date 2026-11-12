@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
+import type { Ctx } from '../src/people/domain/context.js';
 import { call, expectCode, owner, setup, teardown } from './helpers.js';
 
 let ctx: Ctx | null = null;
@@ -77,7 +77,7 @@ describe('merge and undo', () => {
   it('keeping two records separate is remembered and the pair is never proposed again', async () => {
     await call('save_person', { name: 'Sam Lee', identifiers: [{ kind: 'email', value: 'sam@atlas.example' }] }, me);
     const second = (await call('save_person', { name: 'Sam Lee', identifiers: [{ kind: 'email', value: 'sam@other.example' }] }, me)).record;
-    const { proposeSameName } = await import('../src/domain/reviews.js');
+    const { proposeSameName } = await import('../src/people/domain/reviews.js');
     ctx!.db.tx(() => proposeSameName(ctx!, second.id, 'manual'));
     const reviews = await call('list_reviews', { kind: 'person', limit: 10 }, me);
     await call('resolve_identity', { reviewId: reviews.items[0].id, expectedRevision: reviews.items[0].revision, decision: 'keep_separate' }, me);

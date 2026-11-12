@@ -147,9 +147,12 @@ function createScopes(db: Db): ScopeResolver {
       const chosen = access.chosen;
       if (!chosen) throw new AppError('forbidden', 'This connection has no recorded choice. Connect it again');
       if (operation === 'write' && !chosen.write) throw new AppError('forbidden', 'This connection may read but not change these records');
+      // Only sources that still exist: Ri removed a deleted import or collection from every scope.
+      // The kit keeps each connection's choice as it was made, so People drops the gone ones here.
+      const existing = allSources(db);
       return {
         kind: 'sources', actorId, scopeRef: access.scopeRef,
-        sources: new Set(chosen.sources ?? allSources(db)),
+        sources: new Set(chosen.sources ? chosen.sources.filter((key) => existing.includes(key)) : existing),
         operations: new Set<Operation>(chosen.write ? ['read', 'write'] : ['read']),
       };
     },
@@ -166,7 +169,7 @@ function createScopes(db: Db): ScopeResolver {
       if (!row) return null;
       return {
         id: row.client_id, actorId: `chat:${row.client_id}`, revokedAt: null,
-        sources: row.sources ? (JSON.parse(row.sources) as string[]) : allSources(db),
+        sources: row.sources ? (JSON.parse(row.sources) as string[]).filter((key) => allSources(db).includes(key)) : allSources(db),
         operations: row.can_write ? ['read', 'write'] : ['read'],
       };
     },

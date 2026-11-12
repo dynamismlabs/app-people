@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
-import { call, chat, expectCode, job, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { call, chat, expectCode, job, owner, setup, teardown, createScope, revokeScope } from './helpers.js';
 import { fakeHost, mail, OWNER, OWNER_WORK } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -32,8 +32,8 @@ async function world() {
   await call('save_note', { subjectKind: 'person', subjectId: id('Maya Chen'), body: 'Owner note in my main collection.' }, me);
   const mayaRevision = (await call('get_person', { id: id('Maya Chen') }, me)).person.revision;
   await call('save_person', { id: id('Maya Chen'), expectedRevision: mayaRevision, name: 'Aaron Override' }, me);
-  const grantA = await call('create_scope', { actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me);
-  const grantB = await call('create_scope', { actorId: 'chat:b', sources: ['account:work', 'manual'], operations: ['read', 'write'] }, me);
+  const grantA = await createScope({ actorId: 'chat:a', sources: ['account:personal'], operations: ['read'] }, me);
+  const grantB = await createScope({ actorId: 'chat:b', sources: ['account:work', 'manual'], operations: ['read', 'write'] }, me);
   // Owner generates a briefing about Jordan. A narrower chat must never receive its prose.
   await call('set_extraction', { enabled: true }, me);
   const queued = await call('request_briefing', { subjectKind: 'person', subjectId: id('Jordan Bell') }, me);
@@ -105,7 +105,7 @@ describe('app data scopes', () => {
     await expectCode(call('list_people', { limit: 5 }, chat('c', null)), 'forbidden');
     await expectCode(call('save_note', { subjectKind: 'person', subjectId: w.id('Maya Chen'), body: 'Not allowed' }, w.a), 'forbidden');
     await expectCode(call('list_people', { limit: 5 }, chat('impostor', w.grantA.scopeRef)), 'forbidden');
-    await call('revoke_scope', { scopeRef: w.grantA.scopeRef }, w.me);
+    await revokeScope({ scopeRef: w.grantA.scopeRef }, w.me);
     await expectCode(call('list_people', { limit: 5 }, w.a), 'revoked');
     await expectCode(call('export_records', { table: 'people' }, w.b), 'forbidden');
     await expectCode(call('merge_people', { survivorId: w.id('Jordan Bell'), mergedId: w.id('Priya Shah'), survivorRevision: 1, mergedRevision: 1 }, w.b), 'forbidden');

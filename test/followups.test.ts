@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { Ctx } from '../src/domain/context.js';
-import { call, chat, owner, setup, teardown } from './helpers.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { call, chat, owner, setup, teardown, createScope } from './helpers.js';
 import { fakeHost } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -68,7 +68,7 @@ describe('Ri follow-ups', () => {
     const host = fakeHost({});
     const me = owner([], host.capability);
     const person = (await call('save_person', { name: 'Elena Park' }, me)).record;
-    const scope = await call('create_scope', { actorId: 'chat:w', sources: ['manual'], operations: ['read', 'write'] }, me);
+    const scope = await createScope({ actorId: 'chat:w', sources: ['manual'], operations: ['read', 'write'] }, me);
     const writer = chat('w', scope.scopeRef, host.capability);
     const result = await call('create_follow_up', { subject: { kind: 'person', id: person.id }, title: 'Ask Elena about the study', operationId: randomUUID() }, writer);
     expect(result.link.status).toBe('linked');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gist, topic } from '../src/domain/briefings.js';
+import { gist, topic } from '../src/people/domain/briefings.js';
 
 describe('briefing text without AI', () => {
   it('drops reply prefixes from subjects', () => {

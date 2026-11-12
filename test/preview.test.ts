@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Ctx } from '../src/domain/context.js';
+import type { Ctx } from '../src/people/domain/context.js';
 import { call, fixture, setup, teardown } from './helpers.js';
 
 let ctx: Ctx | null = null;

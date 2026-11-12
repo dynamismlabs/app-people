@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { parseGmailMessage, type CalendarEvent } from '@ri/app-kit/sources';
-import type { Ctx } from '../src/domain/context.js';
-import { ingestEvent, ingestMail } from '../src/domain/interactions.js';
-import { findKey, normalizeIdentifier, personForEmail } from '../src/domain/identity.js';
-import { calendarEvent, gmailRaw, type FakeMail } from '../src/fixtures/mail.js';
+import { parseGmailMessage, type CalendarEvent } from '../src/lib/sources.js';
+import type { Ctx } from '../src/people/domain/context.js';
+import { ingestEvent, ingestMail } from '../src/people/domain/interactions.js';
+import { findKey, normalizeIdentifier, personForEmail } from '../src/people/domain/identity.js';
+import { calendarEvent, gmailRaw, type FakeMail } from '../src/people/fixtures/mail.js';
 import { call, owner, setup, teardown } from './helpers.js';
 
 let ctx: Ctx | null = null;
@@ -142,5 +142,5 @@ describe('identity rules', () => {
 });
 
 // Imported lazily so the test file reads top-down like the rules table.
-import * as reviews from '../src/domain/reviews.js';
+import * as reviews from '../src/people/domain/reviews.js';
 function require_reviews() { return reviews; }
