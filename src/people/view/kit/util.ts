@@ -1,5 +1,5 @@
 /** Internal helpers shared by the UI kit modules. */
-import { isLocalDate } from "../time.js";
+import { isLocalDate } from "../../../lib/time.js";
 
 export type ClassValue = string | false | null | undefined;
 /** Join class names, skipping empty values. */

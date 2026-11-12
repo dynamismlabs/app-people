@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { redact, type AccessScope } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { redact, type AccessScope } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx } from './context.js';
 import { organizationVisible, personVisible } from './projection.js';
 import { canSee, canSeeOpportunity, touch, writableCollection } from './scope.js';

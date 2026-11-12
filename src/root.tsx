@@ -7,7 +7,7 @@ import { appConfig } from "../app.config";
 import "./styles.css";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
-  const state = await loadAppPage(application, context.platform, request, [{ name: "list_books" }]);
+  const state = await loadAppPage(application, context.platform, request, []);
   const url = new URL(request.url);
   if (state.viewer && url.pathname === "/login" && url.searchParams.has("response_type")) throw redirect("/api/auth/mcp/authorize" + url.search);
   return state;

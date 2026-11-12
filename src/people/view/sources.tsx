@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Button, ButtonRow, DataTable, Dialog, EmptyState, InlineError, Notice, Select, ShareScopeChooser, SourcesScreen, StatusLabel, TextInput, useAnnounce, useQuery, useRiApp,
   type HistoryDays, type SourceAccount,
-} from '@ri/app-kit/ui';
-import { localDate } from '@ri/app-kit/time';
+} from './kit/index.js';
+import { localDate } from '../../lib/time.js';
 import { dayLabel, updatedLabel, zone } from './format.js';
 import { Failure, Loading, useSave, usePeople } from './shared.js';
 

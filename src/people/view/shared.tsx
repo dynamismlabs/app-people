@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import {
   Button, ButtonRow, Dialog, DocumentIcon, ErrorState, FollowUpDialog, InlineError, LoadingState, Notice, SectionTabs, SourceLine, StatusLabel, useAnnounce, useMutation, useQuery, useRiApp,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { OpenData } from '../actions/common.js';
 import type { Coverage, Evidence, TaskLink } from '../schemas.js';
 import { coverageLines, dateLabel, initials, isOverdue, uuid } from './format.js';

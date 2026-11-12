@@ -1,4 +1,4 @@
-import { formatDate, formatInstant, localDate, relativeDay, systemZone, todayIn, zoneAbbreviation } from '@ri/app-kit/time';
+import { formatDate, formatInstant, localDate, relativeDay, systemZone, todayIn, zoneAbbreviation } from '../../lib/time.js';
 import type { Coverage, NextAction } from '../schemas.js';
 
 export const zone = systemZone();

@@ -14,7 +14,7 @@ import { DataTable } from "./data-display.js";
 import { Select } from "./forms.js";
 import { DangerIcon } from "./icons.js";
 import { formatDateRange, formatInstant, plural, relativeDay, shortDateLabel } from "./format.js";
-import { localDate, systemZone, todayIn } from "../time.js";
+import { localDate, systemZone, todayIn } from "../../../lib/time.js";
 import { errorMessage, isLocalDateString } from "./util.js";
 
 export type SourceStatus = "ready" | "importing" | "paused" | "reconnect" | "error" | "not_started";

@@ -1,4 +1,4 @@
-import { z } from 'zod/v4';
+import { z } from 'zod/v3';
 
 /**
  * Record and filter schemas shared by the actions (strict contract) and the

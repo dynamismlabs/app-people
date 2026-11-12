@@ -1,8 +1,8 @@
-import { AppError } from '@ri/app-kit/contract';
-import { redact, type AccessScope } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { normalizeEmail } from '@ri/app-kit/sources';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { redact, type AccessScope } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { normalizeEmail } from '../../lib/sources.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx } from './context.js';
 import { extractionSetting } from './coverage.js';
 import { AiUnavailable, EXTRACTION_VERSION, PROMPT_LIMIT, aiAllowed, callAi, exactPassage, fence, parseModelJson, squash } from './ai.js';

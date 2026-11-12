@@ -1,6 +1,6 @@
-import { z } from 'zod/v4';
-import type { AccessScope } from '@ri/app-kit/data';
-import { calendarCoverage, mailCoverage, type CalendarCheckpoint, type MailCheckpoint } from '@ri/app-kit/sources';
+import { z } from 'zod/v3';
+import type { AccessScope } from '../../lib/data.js';
+import { calendarCoverage, mailCoverage, type CalendarCheckpoint, type MailCheckpoint } from '../../lib/sources.js';
 import type { Ctx } from './context.js';
 import { canSee, sourceFilter } from './scope.js';
 import type { Coverage } from '../schemas.js';

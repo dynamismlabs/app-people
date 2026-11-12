@@ -1,5 +1,5 @@
-import type { AccessScope } from '@ri/app-kit/data';
-import { systemZone, todayIn } from '@ri/app-kit/time';
+import type { AccessScope } from '../../lib/data.js';
+import { systemZone, todayIn } from '../../lib/time.js';
 import type { Ctx } from './context.js';
 import { Labels, coverageFor } from './coverage.js';
 import { listFollowUps } from './commitments.js';

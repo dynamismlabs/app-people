@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { decodeCursor, encodeCursor, type AccessScope } from '@ri/app-kit/data';
-import { isPersonalMailDomain } from '@ri/app-kit/sources';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { decodeCursor, encodeCursor, type AccessScope } from '../../lib/data.js';
+import { isPersonalMailDomain } from '../../lib/sources.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx, type Param } from './context.js';
 import { Labels } from './coverage.js';
 import { memberLists, nextActionFor, organizationName, sourceLabels, type OrganizationCore } from './projection.js';

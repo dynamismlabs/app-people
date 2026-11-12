@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import { boundText, type AccessScope } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import { boundText, type AccessScope } from '../../lib/data.js';
 import { iso, type Ctx } from './context.js';
 import { saveExclusion } from './exclusions.js';
 import { getOrganizationRow, refreshOrganization, saveOrganization } from './organizations.js';

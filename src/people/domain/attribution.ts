@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import { sha256, type AccessScope } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import { sha256, type AccessScope } from '../../lib/data.js';
 import { iso, newId, type Ctx } from './context.js';
 import { Labels } from './coverage.js';
 import { getKey } from './identity.js';

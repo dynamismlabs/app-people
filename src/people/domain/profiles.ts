@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { redact, scopeFingerprint, type AccessScope } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { redact, scopeFingerprint, type AccessScope } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx } from './context.js';
 import { Labels, extractionSetting } from './coverage.js';
 import { AiUnavailable, PROMPT_LIMIT, aiAllowed, callAi, fence, parseModelJson } from './ai.js';

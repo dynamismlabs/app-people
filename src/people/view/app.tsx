@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppShell, Button, ButtonRow, Dialog, InlineError, LoadingState, Notice, SectionPanel, SectionTabs, Select, TextInput, useAnnounce, useQuery, useLocationMoves, useRiApp,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { OpenData } from '../actions/common.js';
 import { Directory } from './directory.js';
 import { AffiliationDialog } from './person.js';

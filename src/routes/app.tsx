@@ -1,1 +1,1 @@
-export { Library as default } from "../screens";
+export { PeopleScreen as default } from "../screens";

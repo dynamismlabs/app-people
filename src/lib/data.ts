@@ -8,12 +8,9 @@
  * Everything here is synchronous SQLite work inside the caller's transaction
  * boundaries. Nothing starts a timer or a background loop.
  */
-import fs from "node:fs";
-import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import { z } from "zod/v4";
-import { AppError, type AppPrincipal } from "./contract.js";
-import type { AppInvocation } from "./sdk.js";
+import { z } from "zod/v3";
+import { AppError, type AppInvocation } from "./contract.js";
 
 /** The subset of `node:sqlite`'s DatabaseSync these helpers use. */
 export interface SqlDatabase {
@@ -45,47 +42,6 @@ export function transaction<T>(db: SqlDatabase, work: () => T): T {
     if (db.isTransaction) db.exec("ROLLBACK");
     throw error;
   }
-}
-
-// ─── Migrations ──────────────────────────────────────────────────────────────
-
-export interface Migration {
-  version: number;
-  name: string;
-  sql: string;
-}
-/**
- * Apply forward-only migrations. Applied migrations are immutable: a changed
- * checksum or a version newer than this package stops the app instead of
- * guessing, which protects data written by a later version.
- */
-export function migrate(db: SqlDatabase, migrations: readonly Migration[]) {
-  migrations.forEach((migration, index) => {
-    if (migration.version !== index + 1) throw new AppError("app_failed", "App migrations must be numbered 1, 2, 3 in order");
-  });
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS app_schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, checksum TEXT NOT NULL, applied_at TEXT NOT NULL)",
-  );
-  const applied = db.prepare("SELECT version, checksum FROM app_schema_migrations ORDER BY version").all() as { version: number; checksum: string }[];
-  for (const row of applied) {
-    const known = migrations[Number(row.version) - 1];
-    if (!known) throw new AppError("conflict", "This app's data was written by a newer version of the app. Update the app to open it");
-    if (sha256(known.sql) !== row.checksum) throw new AppError("app_failed", `App migration ${row.version} changed after it was applied`);
-  }
-  const done: number[] = [];
-  for (const migration of migrations.slice(applied.length)) {
-    transaction(db, () => {
-      db.exec(migration.sql);
-      db.prepare("INSERT INTO app_schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)").run(
-        migration.version,
-        migration.name,
-        sha256(migration.sql),
-        nowIso(),
-      );
-    });
-    done.push(migration.version);
-  }
-  return { applied: done, version: migrations.length };
 }
 
 // ─── Lists ───────────────────────────────────────────────────────────────────
@@ -123,9 +79,6 @@ export function writeResultSchema<T extends z.ZodType>(record: T) {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export function createSettings(db: SqlDatabase) {
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, value TEXT NOT NULL)",
-  );
   return {
     get<T>(key: string, schema: z.ZodType<T>, fallback: T): T {
       const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key);
@@ -176,110 +129,7 @@ export function allowsAll(scope: AccessScope, sources: Iterable<string>): boolea
 export function scopeFingerprint(scope: AccessScope): string {
   return scope.kind === "owner" ? "owner" : sha256(JSON.stringify([...scope.sources].sort()));
 }
-export interface ScopeRecord {
-  id: string;
-  createdAt: string;
-  updatedAt: string;
-  actorId: string;
-  label: string;
-  sources: string[];
-  operations: Operation[];
-  revokedAt: string | null;
-}
-const scopeRow = (row: Record<string, unknown>): ScopeRecord => ({
-  id: String(row.id),
-  createdAt: String(row.created_at),
-  updatedAt: String(row.updated_at),
-  actorId: String(row.actor_id),
-  label: String(row.label),
-  sources: JSON.parse(String(row.sources)),
-  operations: JSON.parse(String(row.operations)),
-  revokedAt: row.revoked_at === null ? null : String(row.revoked_at),
-});
-const actorPattern = /^(chat|workspace|job|background|owner-ui|fixture):[^\s]{1,128}$/;
-/**
- * App data scopes for callers that are not the owner. The owner creates one in
- * the app's account-access view (`create_scope`), Ri saves its reference in the
- * caller's grant, and every later invocation receives that reference from the
- * host. A scope is immutable: changing access creates a new one.
- */
-export function createScopeStore(db: SqlDatabase, instanceId: () => string) {
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS app_data_scopes (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, instance_id TEXT NOT NULL, actor_id TEXT NOT NULL, label TEXT NOT NULL, sources TEXT NOT NULL, operations TEXT NOT NULL, revoked_at TEXT)",
-  );
-  return {
-    create(input: { actorId: string; label: string; sources: string[]; operations: Operation[] }): ScopeRecord {
-      if (!actorPattern.test(input.actorId) || input.actorId.startsWith("owner-ui:") || input.actorId.startsWith("fixture:"))
-        throw new AppError("invalid_input", "Choose a chat, agent or scheduled caller for this access");
-      const sources = [...new Set(input.sources)].sort();
-      const operations = [...new Set(input.operations)].sort() as Operation[];
-      if (!sources.length) throw new AppError("invalid_input", "Choose at least one account or collection to share");
-      if (!operations.length || operations.some((op) => op !== "read" && op !== "write"))
-        throw new AppError("invalid_input", "Choose what this caller may do");
-      if (sources.length > 200) throw new AppError("invalid_input", "Share at most 200 sources with one caller");
-      const id = randomUUID(), time = nowIso();
-      db.prepare(
-        "INSERT INTO app_data_scopes (id, created_at, updated_at, instance_id, actor_id, label, sources, operations, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
-      ).run(id, time, time, instanceId(), input.actorId, input.label.slice(0, 200), JSON.stringify(sources), JSON.stringify(operations));
-      return this.get(id)!;
-    },
-    get(id: string): ScopeRecord | null {
-      const row = db.prepare("SELECT * FROM app_data_scopes WHERE id = ? AND instance_id = ?").get(id, instanceId());
-      return row ? scopeRow(row) : null;
-    },
-    list(): ScopeRecord[] {
-      return db.prepare("SELECT * FROM app_data_scopes WHERE instance_id = ? ORDER BY created_at DESC LIMIT 200").all(instanceId()).map(scopeRow);
-    },
-    revoke(id: string) {
-      const time = nowIso();
-      db.prepare("UPDATE app_data_scopes SET revoked_at = COALESCE(revoked_at, ?), updated_at = ? WHERE id = ? AND instance_id = ?").run(time, time, id, instanceId());
-    },
-    /** Remove a deleted source from every scope so a later identical key never inherits old access. */
-    forgetSource(source: string) {
-      // Every matching scope, not a page of them, in one transaction.
-      transaction(db, () => {
-        const rows = db.prepare("SELECT * FROM app_data_scopes WHERE instance_id = ? AND instr(sources, ?) > 0").all(instanceId(), JSON.stringify(source)).map(scopeRow);
-        const time = nowIso();
-        for (const scope of rows) {
-          if (!scope.sources.includes(source)) continue;
-          db.prepare("UPDATE app_data_scopes SET sources = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(scope.sources.filter((item) => item !== source)), time, scope.id);
-        }
-      });
-    },
-    /**
-     * The data this invocation may use for `operation`. The owner's view and an
-     * isolated preview see everything. A schedule sees only its own granted
-     * accounts. A chat or agent needs the scope its current grant selected,
-     * created for that exact caller, unrevoked and allowing the operation.
-     */
-    resolve(invocation: Pick<AppInvocation, "principal" | "access">, operation: Operation): AccessScope {
-      const principal: AppPrincipal = invocation.principal;
-      const actorId = `${principal.kind}:${principal.id}`;
-      if (principal.kind === "owner-ui" || principal.kind === "fixture") return { kind: "owner", actorId };
-      const access = invocation.access;
-      if (!access || access.actorId !== actorId)
-        throw new AppError("forbidden", "This caller's app access could not be verified");
-      if (principal.kind === "job" || principal.kind === "background")
-        return {
-          kind: "sources",
-          actorId,
-          scopeRef: null,
-          sources: new Set(access.accounts.map((item) => accountSource(item.account))),
-          operations: new Set<Operation>(["read", "write"]),
-        };
-      if (!access.scopeRef)
-        throw new AppError("forbidden", "The owner has not chosen which records this chat may use. Ask them to choose account access for it");
-      const scope = this.get(access.scopeRef);
-      if (!scope || scope.actorId !== actorId)
-        throw new AppError("forbidden", "This access belongs to a different caller");
-      if (scope.revokedAt) throw new AppError("revoked", "The owner removed this caller's access");
-      if (!scope.operations.includes(operation))
-        throw new AppError("forbidden", operation === "write" ? "This caller may read but not change these records" : "This caller may not read these records");
-      return { kind: "sources", actorId, scopeRef: scope.id, sources: new Set(scope.sources), operations: new Set(scope.operations) };
-    },
-  };
-}
-export type ScopeStore = ReturnType<typeof createScopeStore>;
+
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
@@ -321,15 +171,6 @@ const jobRow = (row: Record<string, unknown>): JobRecord => ({
 export function createJobQueue(db: SqlDatabase, options: { now?: () => Date } = {}) {
   const clock = options.now ?? (() => new Date());
   const stamp = () => clock().toISOString();
-  db.exec(`CREATE TABLE IF NOT EXISTS app_jobs (
-    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-    kind TEXT NOT NULL, source_key TEXT NOT NULL,
-    state TEXT NOT NULL CHECK (state IN ('pending','running','paused','failed')),
-    attempts INTEGER NOT NULL, next_eligible_at TEXT NOT NULL,
-    last_run_at TEXT, last_success_at TEXT, last_error TEXT, idempotent INTEGER NOT NULL,
-    UNIQUE (kind, source_key));
-  CREATE INDEX IF NOT EXISTS app_jobs_due ON app_jobs (state, next_eligible_at);`);
-  createSettings(db);
   const get = (id: string) => {
     const row = db.prepare("SELECT * FROM app_jobs WHERE id = ?").get(id);
     return row ? jobRow(row) : null;
@@ -436,43 +277,35 @@ export type JobQueue = ReturnType<typeof createJobQueue>;
 // ─── Evidence files ──────────────────────────────────────────────────────────
 
 /**
- * Large imported content (documents, message bodies) lives in app-owned files
- * named by their SHA-256 digest, so a repeated import stores one copy.
+ * Large imported content (message bodies, passages) named by its SHA-256
+ * digest, so a repeated import stores one copy. In Ri these were files in the
+ * app's data directory. On App Builder they live in the app's own database
+ * (evidence_blobs), so the kit's backups and restores carry them.
  */
-export function createBlobStore(directory: string) {
-  const root = path.resolve(directory);
-  const file = (digest: string) => {
+export function createBlobStore(db: SqlDatabase) {
+  const check = (digest: string) => {
     if (!/^[a-f0-9]{64}$/.test(digest)) throw new AppError("invalid_input", "Invalid evidence reference");
-    return path.join(root, digest.slice(0, 2), digest);
+    return digest;
   };
   return {
     put(data: string | Uint8Array): { digest: string; size: number } {
       const bytes = typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data);
-      const digest = sha256(bytes), target = file(digest);
-      if (!fs.existsSync(target)) {
-        fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
-        const temporary = `${target}.${randomUUID()}.tmp`;
-        fs.writeFileSync(temporary, bytes, { mode: 0o600 });
-        fs.renameSync(temporary, target);
-      }
+      const digest = sha256(bytes);
+      db.prepare("INSERT INTO evidence_blobs (digest, created_at, size, bytes) VALUES (?, ?, ?, ?) ON CONFLICT(digest) DO NOTHING").run(digest, nowIso(), bytes.byteLength, bytes);
       return { digest, size: bytes.byteLength };
     },
     read(digest: string): Buffer | null {
-      try {
-        return fs.readFileSync(file(digest));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw error;
-      }
+      const row = db.prepare("SELECT bytes FROM evidence_blobs WHERE digest = ?").get(check(digest));
+      return row ? Buffer.from(row.bytes as Uint8Array) : null;
     },
     readText(digest: string): string | null {
       return this.read(digest)?.toString("utf8") ?? null;
     },
     has(digest: string) {
-      return fs.existsSync(file(digest));
+      return !!db.prepare("SELECT 1 AS ok FROM evidence_blobs WHERE digest = ?").get(check(digest));
     },
     remove(digest: string) {
-      fs.rmSync(file(digest), { force: true });
+      db.prepare("DELETE FROM evidence_blobs WHERE digest = ?").run(check(digest));
     },
   };
 }

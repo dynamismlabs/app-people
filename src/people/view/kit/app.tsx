@@ -1,186 +1,92 @@
 /**
- * The connection between an app view and Ri. `RiAppProvider` connects the
- * MCP Apps bridge once, tracks the opener result and theme, and offers the
- * host intents through `useRiApp()`: stage a chat draft, open Sources or
- * Manage access, remember the view location, open HTTPS links, select and
- * download files. Every intent goes through the host. Nothing here sends a
- * chat message, grants access or reaches the network.
+ * The connection between People's screens and the app, on App Builder.
+ *
+ * In Ri this file connected the view to Ri's host bridge. It now sits on the
+ * kit's client (`useAppClient` from @app-builder/core/react), which calls the
+ * app's actions over HTTP in the app's own web page and as MCP tool calls
+ * inside an assistant (MCP Apps). The `RiApp` interface the screens use is
+ * unchanged, so the screens are the same code. What the kit's client can't do
+ * inside an assistant (stage a chat draft, open a link, download a file) is
+ * reported as unavailable there; see docs/parity.md.
  */
 import { createContext, useCallback, useContext, useEffect, useInsertionEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { connectApp } from "../app-client.js";
+import { useAppClient } from "@app-builder/core/react";
 import { LiveRegion } from "./announce.js";
 import { installStyles } from "./styles.js";
-import { clampText, errorMessage, stableJson } from "./util.js";
+import { errorMessage, stableJson } from "./util.js";
 
 export type Theme = "light" | "dark";
 export interface SelectedFile { name: string; mimeType: string; base64: string }
-
-/**
- * What the provider needs from a bridge client. `connectApp()` returns a
- * compatible object. Tests and galleries pass `createMemoryClient()`.
- */
-export interface RiAppClient {
-  call(action: string, input?: Record<string, unknown>, options?: { invocationId?: string }): Promise<unknown>;
-  context(state: unknown): Promise<void>;
-  selectFile(): Promise<SelectedFile | null>;
-  navigate?(path: string): unknown;
-  app: {
-    openLink(params: { url: string }): Promise<{ isError?: boolean } & Record<string, unknown>>;
-    downloadFile?(params: { contents: DownloadContent[] }): Promise<{ isError?: boolean } & Record<string, unknown>>;
-  };
-  /** Optional push channel used by memory clients to deliver opener results, theme changes and moves. */
-  subscribe?(listener: { result?: (data: unknown) => void; theme?: (theme: Theme) => void; move?: (url: string) => void }): () => void;
-}
-
-export interface DownloadContent {
-  type: "resource";
-  resource: { uri: string; mimeType: string; text?: string; blob?: string };
-}
 export interface DownloadRequest {
-  /** File name such as `trip-lisbon.ics`. Path separators are removed. */
+  /** File name such as `people.csv`. Path separators are removed. */
   name: string;
   mimeType: string;
   /** Text content. Provide exactly one of `text` or `base64`. */
   text?: string;
-  /** Base64 content for binary files. */
   base64?: string;
 }
 
 export interface RiApp<TData = unknown> {
-  /** The latest opener result from the host. */
+  /** The latest `open_view` result for the current place. */
   data: TData | undefined;
-  /** Counts refreshed opener results that changed after the initial one. Queries refetch when it changes. */
+  /** Counts refreshed results after the first. Queries refetch when it changes. */
   revision: number;
   theme: Theme;
   connected: boolean;
   error: string | null;
+  /** Inside an assistant (MCP Apps) rather than the app's own page. */
+  embedded: boolean;
+  /** Whether a chat composer is available to stage a question. Never on App Builder today. */
+  canAsk: boolean;
   call<T = unknown>(action: string, input?: Record<string, unknown>, options?: { invocationId?: string }): Promise<T>;
-  /** Coalesced model-context update. Only the latest state is sent, about 150 ms after changes settle and at most 10 times a second. */
+  /** What the person is looking at. Only one selected record's id and title reach the assistant (the kit's bounded selection). */
   context(state: unknown): void;
-  /** Stage editable text in Ri's native chat composer. Never sends. */
   ask(prompt: string): Promise<void>;
-  /** Open this app's Sources in the host. */
   openSources(): Promise<void>;
-  /** Open Ri's account access controls for this app. */
   manageAccess(): Promise<void>;
-  /**
-   * Remember a view path such as `/trips/lisbon?tab=bookings` in the host URL. Debounced 300 ms.
-   * A new path, such as opening a record or a section, is a place Back returns from. A change only
-   * to the query, such as a filter or a search, updates the current place. Pass `replace` to
-   * update the current place even when the path changes, or `push` to make a new place even when
-   * only the query changes, as when a selected record opens beside a list.
-   */
   setLocation(path: string, options?: { replace?: boolean; push?: boolean }): void;
-  /**
-   * Leave this place the way the person came, which Back would also do. When they arrived here
-   * directly, as from a link, go to `fallback` instead. For a close or back button.
-   */
   goBack(fallback: string): void;
-  /** Counts the times the host moved this view, as with Back and Forward. Each delivers new `data`. */
   moves: number;
-  /** Open an HTTPS link through the host, which confirms first. Other schemes throw. */
   openExternal(url: string): Promise<void>;
-  /** Open an address in an external map through the host. Nothing loads inside the view. */
   openDirections(address: string): Promise<void>;
   selectFile(): Promise<SelectedFile | null>;
   download(file: DownloadRequest): Promise<void>;
 }
 
 const RiAppContext = createContext<RiApp | null>(null);
+type Follow = (listener: (data: unknown) => void) => () => void;
+const FollowContext = createContext<Follow | null>(null);
 
-/** The app connection from the nearest `RiAppProvider`. */
 export function useRiApp<TData = unknown>(): RiApp<TData> {
   const value = useContext(RiAppContext);
   if (!value) throw new Error("useRiApp needs a RiAppProvider above this component");
   return value as RiApp<TData>;
 }
-/**
- * Move the view when the host moves it, as with Back and Forward, instead of being reopened
- * there. `onMove` receives the opener result for the new location. Read the route from it.
- */
-export function useLocationMoves<TData = unknown>(onMove: (data: TData) => void) {
-  const app = useContext(RiAppContext);
-  if (!app) throw new Error("useLocationMoves needs a RiAppProvider above this component");
-  const handler = useRef(onMove);
-  // Kept current before any effect runs, so a move always reaches the latest handler.
-  useInsertionEffect(() => {
-    handler.current = onMove;
-  });
-  const follow = (app as unknown as { follow(listener: (data: unknown) => void): () => void }).follow;
-  useEffect(() => follow((data) => handler.current(data as TData)), [follow]);
-}
-
-/** The app connection, or null outside a provider. */
 export function useOptionalRiApp<TData = unknown>(): RiApp<TData> | null {
   return useContext(RiAppContext) as RiApp<TData> | null;
 }
-
-export const HOST_PATHS = {
-  chat: "/__host/chat",
-  sources: "/__host/sources",
-  manageAccess: "/__host/manage-access",
-  location: "/__host/location",
-} as const;
-export const MAX_PROMPT_LENGTH = 2000;
-/** Approximate byte budget for one context state, inside the host's 8 KiB envelope limit. */
-export const MAX_CONTEXT_BYTES = 8000;
-
-/** The host chat intent for a prompt, trimmed to 2,000 characters. */
-export function chatIntentUrl(prompt: string): string {
-  return `${HOST_PATHS.chat}?prompt=${encodeURIComponent(clampText(prompt, MAX_PROMPT_LENGTH))}`;
+/** Move the view when the person goes Back or Forward. `onMove` receives the `open_view` result for the new place. */
+export function useLocationMoves<TData = unknown>(onMove: (data: TData) => void) {
+  const follow = useContext(FollowContext);
+  if (!follow) throw new Error("useLocationMoves needs a RiAppProvider above this component");
+  const handler = useRef(onMove);
+  useInsertionEffect(() => { handler.current = onMove; });
+  useEffect(() => follow((data) => handler.current(data as TData)), [follow]);
 }
-/**
- * How a location joins the host's history. Without one the host decides: a new path is a new
- * place, and a new query updates the current one. `back` returns the way the person came.
- */
-export type LocationEntry = "replace" | "push" | "back";
-/** The host location intent for a view path. */
-export function locationIntentUrl(path: string, entry?: LocationEntry): string {
-  return `${HOST_PATHS.location}?to=${encodeURIComponent(path)}${entry ? `&entry=${entry}` : ""}`;
-}
-/** Tells the host this view follows its moves, so Back and Forward needn't reopen it. */
-export const FOLLOW_MOVES_URL = `${HOST_PATHS.location}?follows=1`;
-/** A validated HTTPS URL, or an error explaining why it cannot open. */
+
 export function assertHttpsUrl(url: string): string {
   let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new Error("This link is not a valid web address");
-  }
+  try { parsed = new URL(url); } catch { throw new Error("This link is not a valid web address"); }
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("Only secure https links can open from this app");
   return parsed.href;
 }
 export function directionsUrl(address: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
 }
-/** The embedded resource for a host-mediated download. */
-export function downloadContents(file: DownloadRequest): DownloadContent[] {
-  const name = file.name.split(/[\\/]/).pop()?.trim() || "export";
-  if ((file.text === undefined) === (file.base64 === undefined)) throw new Error("Provide either text or base64 content to download");
-  const resource: DownloadContent["resource"] = { uri: "file:///" + encodeURIComponent(name), mimeType: file.mimeType };
-  if (file.text !== undefined) resource.text = file.text;
-  else resource.blob = file.base64;
-  return [{ type: "resource", resource }];
-}
 
 type Timer = ReturnType<typeof setTimeout>;
-export interface CoalescerOptions {
-  /** Quiet period after the last update before sending. */
-  delay?: number;
-  /** Longest an update may wait while changes keep arriving. */
-  maxWait?: number;
-  /** Minimum time between two sends. */
-  minInterval?: number;
-  now?: () => number;
-  schedule?: (fn: () => void, ms: number) => Timer;
-  cancel?: (timer: Timer) => void;
-}
-/**
- * Trailing coalescer: keeps only the latest value, sends it after `delay` of
- * quiet (or `maxWait` under constant change), never faster than
- * `minInterval`, and skips a value equal to the one last sent.
- */
+export interface CoalescerOptions { delay?: number; maxWait?: number; minInterval?: number; now?: () => number; schedule?: (fn: () => void, ms: number) => Timer; cancel?: (timer: Timer) => void }
+/** Keeps only the latest value and sends it after a quiet period, skipping repeats. */
 export function createCoalescer<T>(send: (value: T) => void, options: CoalescerOptions = {}) {
   const delay = options.delay ?? 150, maxWait = options.maxWait ?? 1000, minInterval = options.minInterval ?? 100;
   const now = options.now ?? (() => Date.now());
@@ -194,271 +100,212 @@ export function createCoalescer<T>(send: (value: T) => void, options: CoalescerO
     const { value, key } = pending;
     pending = null;
     if (key === lastSentKey) return;
-    lastSentKey = key;
-    lastSentAt = now();
+    lastSentKey = key; lastSentAt = now();
     send(value);
   };
   const arm = () => {
     if (timer) cancel(timer);
     const at = now();
-    const wait = Math.max(Math.min(delay, firstPendingAt + maxWait - at), lastSentAt + minInterval - at, 0);
-    timer = schedule(flush, wait);
+    timer = schedule(flush, Math.max(Math.min(delay, firstPendingAt + maxWait - at), lastSentAt + minInterval - at, 0));
   };
   return {
-    push(value: T, key: string = stableJson(value)) {
-      if (!pending) firstPendingAt = now();
-      pending = { value, key };
-      arm();
-    },
-    flush() {
-      if (timer) cancel(timer);
-      flush();
-    },
-    dispose() {
-      if (timer) cancel(timer);
-      timer = null;
-      pending = null;
-    },
+    push(value: T, key: string = stableJson(value)) { if (!pending) firstPendingAt = now(); pending = { value, key }; arm(); },
+    flush() { if (timer) cancel(timer); flush(); },
+    dispose() { if (timer) cancel(timer); timer = null; pending = null; },
   };
+}
+
+const UNAVAILABLE_HERE = "Open People in your browser to do this. It isn't available inside a chat.";
+const splitPath = (path: string) => {
+  const url = new URL(path, "http://view.local");
+  return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
+};
+const currentTheme = (): Theme => (typeof document !== "undefined" && document.documentElement.dataset.theme === "dark") ? "dark" : "light";
+
+/** Selected records go to the assistant as the kit's bounded selection: one record's id and title. */
+async function selectionTitle(call: (name: string, input: Record<string, unknown>) => Promise<unknown>, item: { kind: string; id: string }) {
+  try {
+    const result = await call("get_record_title", { kind: item.kind, id: item.id }) as { title: string | null };
+    return result.title;
+  } catch { return null; }
 }
 
 export interface RiAppProviderProps {
   children?: ReactNode;
-  /** A bridge client. When omitted the provider calls `connectApp()` once on mount. */
-  client?: RiAppClient;
-  /** Opener data to show before the host delivers its first result. */
-  initialData?: unknown;
-  /** Theme before the host reports one. */
-  initialTheme?: Theme;
-  /** Replace `connectApp`, for tests of the connection flow. */
-  connect?: typeof connectApp;
+  /** Where the view starts. Defaults to the page's own address, or `/` inside an assistant. */
+  initialPath?: string;
 }
 
-/** Connects the app view to Ri and provides `useRiApp()`, `useQuery()`, `useMutation()` and `useAnnounce()`. */
-export function RiAppProvider({ children, client: providedClient, initialData, initialTheme, connect = connectApp }: RiAppProviderProps) {
-  useInsertionEffect(() => {
-    installStyles();
-  }, []);
-  const [data, setData] = useState<unknown>(initialData);
+export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
+  useInsertionEffect(() => { installStyles(); }, []);
+  const client = useAppClient();
+  const embedded = client.embedded;
+  const [data, setData] = useState<unknown>(undefined);
   const [revision, setRevision] = useState(0);
-  const [theme, setTheme] = useState<Theme>(initialTheme ?? "light");
-  const [connected, setConnected] = useState(Boolean(providedClient));
+  const [theme, setTheme] = useState<Theme>(currentTheme);
   const [error, setError] = useState<string | null>(null);
   const [moves, setMoves] = useState(0);
-  const moving = useRef(false);
   const movers = useRef(new Set<(data: unknown) => void>());
-  const resultCount = useRef(initialData === undefined ? 0 : 1);
-  const lastResultKey = useRef(initialData === undefined ? null : stableJson(initialData));
-  const clientRef = useRef<RiAppClient | null>(providedClient ?? null);
-  const waiting = useRef<((client: RiAppClient) => void)[]>([]);
-  const connecting = useRef<Promise<RiAppClient> | null>(null);
+  const lastKey = useRef<string | null>(null);
+  const count = useRef(0);
+  // Inside an assistant the view has no address: its places are kept here.
+  const stack = useRef<string[]>([]);
+  const callRef = useRef(client.call);
+  callRef.current = client.call;
 
-  const receive = useCallback((value: unknown) => {
+  const open = useCallback(async (place: string) => {
+    const { path, query } = splitPath(place);
+    return callRef.current("open_view", { path, query });
+  }, []);
+  const receive = useCallback((value: unknown, moved: boolean) => {
     const key = stableJson(value);
-    // A move always places the view, even when the new location's result matches the last one.
-    const moved = moving.current;
-    moving.current = false;
-    if (key === lastResultKey.current && !moved) return;
-    lastResultKey.current = key;
+    if (key === lastKey.current && !moved) return;
+    lastKey.current = key;
     setData(value);
-    // The first opener result is the initial view, not a refresh.
-    if (resultCount.current++ > 0) setRevision((current) => current + 1);
+    if (count.current++ > 0) setRevision((current) => current + 1);
     if (moved) {
       setMoves((current) => current + 1);
       for (const listener of movers.current) listener(value);
     }
   }, []);
-  const receiveMove = useCallback(() => {
-    moving.current = true;
-  }, []);
-  const receiveTheme = useCallback((value: Theme) => {
-    setTheme(value);
-    if (typeof document !== "undefined") document.documentElement.dataset.theme = value;
-  }, []);
+  const moveTo = useCallback(async (place: string) => {
+    try { receive(await open(place), true); setError(null); }
+    catch (failure) { setError(errorMessage(failure, "People could not open this place")); }
+  }, [open, receive]);
 
   useEffect(() => {
-    if (providedClient) {
-      clientRef.current = providedClient;
-      setConnected(true);
-      for (const resolve of waiting.current.splice(0)) resolve(providedClient);
-      return providedClient.subscribe?.({ result: receive, theme: receiveTheme, move: receiveMove });
-    }
+    const start = initialPath ?? (embedded || typeof window === "undefined" ? "/" : window.location.pathname + window.location.search);
+    stack.current = [start];
     let active = true;
-    connecting.current ??= connect({ result: (value) => receive(value), theme: (value) => receiveTheme(value), move: () => receiveMove() }) as Promise<RiAppClient>;
-    connecting.current.then(
-      (client) => {
-        clientRef.current = client;
-        for (const resolve of waiting.current.splice(0)) resolve(client);
-        if (active) {
-          setConnected(true);
-          setError(null);
-        }
-      },
-      (failure: unknown) => {
-        if (active) setError(errorMessage(failure, "The app could not connect to Ri"));
-      },
-    );
-    return () => {
-      active = false;
+    open(start).then((value) => { if (active) { receive(value, false); setError(null); } },
+      (failure) => { if (active) setError(errorMessage(failure, "People could not open")); });
+    return () => { active = false; };
+  }, [open, receive, initialPath, embedded]);
+
+  // The host's theme, which the kit applies to <html data-theme>.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const observer = new MutationObserver(() => setTheme(currentTheme()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  // In the app's own page, Back and Forward move the view with the browser's history.
+  useEffect(() => {
+    if (embedded || typeof window === "undefined") return;
+    const onPop = () => { void moveTo(window.location.pathname + window.location.search); };
+    window.addEventListener("popstate", onPop);
+    // Coming back to the page refreshes what it shows, as Ri did after changes elsewhere.
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void open(window.location.pathname + window.location.search).then((value) => receive(value, false), () => undefined);
     };
-  }, [providedClient, connect, receive, receiveTheme, receiveMove]);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { window.removeEventListener("popstate", onPop); document.removeEventListener("visibilitychange", onVisible); };
+  }, [embedded, moveTo, open, receive]);
 
-  const ready = useCallback((): Promise<RiAppClient> => {
-    if (clientRef.current) return Promise.resolve(clientRef.current);
-    return new Promise((resolve) => waiting.current.push(resolve));
-  }, []);
-
-  const open = useCallback(async (url: string) => {
-    const client = await ready();
-    const result = await client.app.openLink({ url });
-    if (result?.isError) throw new Error("Ri could not open this");
-  }, [ready]);
-
-  const contextCoalescer = useRef<ReturnType<typeof createCoalescer<unknown>> | null>(null);
-  const locationCoalescer = useRef<ReturnType<typeof createCoalescer<string>> | null>(null);
-  if (!contextCoalescer.current)
-    contextCoalescer.current = createCoalescer<unknown>((state) => {
-      void ready()
-        .then((client) => client.context(state))
-        .catch((failure: unknown) => setError(errorMessage(failure, "Ri could not update the chat context")));
+  const selection = useRef<ReturnType<typeof createCoalescer<unknown>> | null>(null);
+  if (!selection.current)
+    selection.current = createCoalescer<unknown>((state) => {
+      const selected = (state as { selected?: { kind: string; id: string }[] })?.selected ?? [];
+      if (selected.length !== 1) { client.select(null); return; }
+      void selectionTitle(callRef.current, selected[0]).then((title) => client.select(title ? { id: selected[0].id, title } : null));
     }, { delay: 150, maxWait: 1000, minInterval: 100 });
-  if (!locationCoalescer.current)
-    locationCoalescer.current = createCoalescer<string>((intent) => {
-      void open(intent).catch(() => undefined);
-    }, { delay: 300, maxWait: 2000, minInterval: 300 });
-  useEffect(() => () => {
-    contextCoalescer.current?.flush();
-    locationCoalescer.current?.flush();
-  }, []);
+  useEffect(() => () => { selection.current?.flush(); client.select(null); }, [client.select]);
 
-  // Functions are stable for the provider's lifetime, so hooks that depend on
-  // them only re-run when their own inputs or the opener revision change.
   const actions = useMemo(() => ({
-    call: async <T,>(action: string, input: Record<string, unknown> = {}, options: { invocationId?: string } = {}) => {
-      const client = await ready();
-      return (await client.call(action, input, options)) as T;
+    call: async <T,>(action: string, input: Record<string, unknown> = {}, options: { invocationId?: string } = {}) =>
+      (await callRef.current<T>(action, options.invocationId ? { ...input, requestId: options.invocationId } : input)) as T,
+    context(state: unknown) { selection.current!.push(state); },
+    ask: async () => { throw new Error("Asking from People isn't available here. Ask in your chat instead."); },
+    openSources: async () => {
+      if (embedded) { stack.current.push("/sources"); await moveTo("/sources"); return; }
+      window.history.pushState({ people: true }, "", "/sources");
+      await moveTo("/sources");
     },
-    context(state: unknown) {
-      const key = stableJson(state);
-      if (new TextEncoder().encode(key).byteLength > MAX_CONTEXT_BYTES) {
-        console.warn(`Ri app context skipped: it exceeds the ${MAX_CONTEXT_BYTES} byte budget. Send IDs, filters and revisions only.`);
+    manageAccess: async () => {
+      if (embedded) throw new Error("Choose which accounts People may read on People's page in Ri.");
+      window.location.assign("/settings");
+    },
+    setLocation(path: string, options: { replace?: boolean; push?: boolean } = {}) {
+      if (embedded) {
+        const top = stack.current.at(-1);
+        const samePlace = top && splitPath(top).path === splitPath(path).path;
+        if (options.replace || (samePlace && !options.push)) stack.current[stack.current.length - 1] = path;
+        else stack.current.push(path);
         return;
       }
-      contextCoalescer.current!.push(state, key);
-    },
-    ask: (prompt: string) => open(chatIntentUrl(prompt)),
-    openSources: () => open(HOST_PATHS.sources),
-    manageAccess: () => open(HOST_PATHS.manageAccess),
-    setLocation(path: string, options: { replace?: boolean; push?: boolean } = {}) {
-      const intent = locationIntentUrl(path, options.replace ? "replace" : options.push ? "push" : undefined);
-      locationCoalescer.current!.push(intent, intent);
+      const here = window.location.pathname + window.location.search;
+      if (here === path) return;
+      const samePlace = window.location.pathname === splitPath(path).path;
+      if (options.replace || (samePlace && !options.push)) window.history.replaceState({ people: true }, "", path);
+      else window.history.pushState({ people: true }, "", path);
     },
     goBack(fallback: string) {
-      // A location still waiting to be reported is where the person is leaving from.
-      locationCoalescer.current!.flush();
-      void open(locationIntentUrl(fallback, "back")).catch(() => undefined);
+      if (embedded) {
+        stack.current.pop();
+        const previous = stack.current.at(-1);
+        if (!previous) stack.current.push(fallback);
+        void moveTo(previous ?? fallback);
+        return;
+      }
+      if ((window.history.state as { people?: boolean } | null)?.people && window.history.length > 1) { window.history.back(); return; }
+      window.history.replaceState({ people: true }, "", fallback);
+      void moveTo(fallback);
     },
-    follow(listener: (data: unknown) => void) {
-      movers.current.add(listener);
-      if (movers.current.size === 1) void open(FOLLOW_MOVES_URL).catch(() => undefined);
-      return () => { movers.current.delete(listener); };
+    openExternal: async (url: string) => {
+      const safe = assertHttpsUrl(url);
+      if (embedded) throw new Error(UNAVAILABLE_HERE);
+      window.open(safe, "_blank", "noopener,noreferrer");
     },
-    openExternal: async (url: string) => open(assertHttpsUrl(url)),
-    openDirections: (address: string) => open(directionsUrl(address)),
-    selectFile: async () => (await ready()).selectFile(),
+    openDirections: async (address: string) => {
+      if (embedded) throw new Error(UNAVAILABLE_HERE);
+      window.open(directionsUrl(address), "_blank", "noopener,noreferrer");
+    },
+    selectFile: () => new Promise<SelectedFile | null>((resolve, reject) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".csv,.vcf,.txt,text/csv,text/vcard,text/plain";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) { resolve(null); return; }
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("The file could not be read"));
+        reader.onload = () => {
+          const url = String(reader.result);
+          resolve({ name: file.name, mimeType: file.type || "text/plain", base64: url.slice(url.indexOf(",") + 1) });
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    }),
     download: async (file: DownloadRequest) => {
-      const client = await ready();
-      if (!client.app.downloadFile) throw new Error("Downloads are not available in this view");
-      const result = await client.app.downloadFile({ contents: downloadContents(file) });
-      if (result?.isError) throw new Error("The download was cancelled or blocked");
+      if (embedded) throw new Error(UNAVAILABLE_HERE);
+      if ((file.text === undefined) === (file.base64 === undefined)) throw new Error("Provide either text or base64 content to download");
+      const bytes = file.text !== undefined ? new TextEncoder().encode(file.text) : Uint8Array.from(atob(file.base64!), (char) => char.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.name.split(/[\\/]/).pop()?.trim() || "export";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
-  }), [ready, open]);
-  const value = useMemo<RiApp>(() => ({ data, revision, theme, connected, error, moves, ...actions }), [data, revision, theme, connected, error, moves, actions]);
+  }), [embedded, moveTo]);
 
+  const follow = useCallback<Follow>((listener) => {
+    movers.current.add(listener);
+    return () => { movers.current.delete(listener); };
+  }, []);
+  const value = useMemo<RiApp>(() => ({
+    data, revision, theme, connected: data !== undefined, error, moves, embedded, canAsk: false, ...actions,
+  }), [data, revision, theme, error, moves, embedded, actions]);
   return (
     <RiAppContext.Provider value={value}>
-      <LiveRegion>{children}</LiveRegion>
+      <FollowContext.Provider value={follow}>
+        <LiveRegion>{children}</LiveRegion>
+      </FollowContext.Provider>
     </RiAppContext.Provider>
   );
-}
-
-export interface MemoryCall { action: string; input: Record<string, unknown>; invocationId?: string }
-export interface MemoryClient extends RiAppClient {
-  calls: MemoryCall[];
-  contexts: unknown[];
-  links: string[];
-  downloads: DownloadContent[][];
-  /** Deliver a new opener result, as the host does after a refresh. */
-  emitResult(data: unknown): void;
-  /** Move the view to a new location with its opener result, as the host does for Back and Forward. */
-  emitMove(url: string, data: unknown): void;
-  setTheme(theme: Theme): void;
-}
-export interface MemoryClientOptions {
-  /** The initial opener result delivered to the provider. */
-  data?: unknown;
-  /** Action handlers. An action without a handler rejects. */
-  handlers?: Record<string, (input: Record<string, unknown>, meta: { invocationId?: string }) => unknown>;
-  /** File returned by `selectFile()`. */
-  file?: SelectedFile | null;
-  /** Artificial latency for calls, in milliseconds. */
-  latency?: number;
-}
-/**
- * An in-memory client for tests and component galleries. It records calls,
- * context states, opened links and downloads, and needs no host.
- */
-export function createMemoryClient(options: MemoryClientOptions = {}): MemoryClient {
-  const listeners = new Set<{ result?: (data: unknown) => void; theme?: (theme: Theme) => void; move?: (url: string) => void }>();
-  let latest = options.data;
-  const wait = () => (options.latency ? new Promise((resolve) => setTimeout(resolve, options.latency)) : Promise.resolve());
-  const client: MemoryClient = {
-    calls: [],
-    contexts: [],
-    links: [],
-    downloads: [],
-    async call(action, input = {}, meta = {}) {
-      client.calls.push({ action, input, ...(meta.invocationId ? { invocationId: meta.invocationId } : {}) });
-      await wait();
-      const handler = options.handlers?.[action];
-      if (!handler) throw new Error(`No handler for ${action}`);
-      return handler(input, meta);
-    },
-    async context(state) {
-      client.contexts.push(state);
-    },
-    async selectFile() {
-      return options.file ?? null;
-    },
-    navigate(path) {
-      client.links.push(path);
-    },
-    app: {
-      async openLink({ url }) {
-        client.links.push(url);
-        return {};
-      },
-      async downloadFile({ contents }) {
-        client.downloads.push(contents);
-        return {};
-      },
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      if (latest !== undefined) listener.result?.(latest);
-      return () => listeners.delete(listener);
-    },
-    emitResult(data) {
-      latest = data;
-      for (const listener of listeners) listener.result?.(data);
-    },
-    emitMove(url, data) {
-      latest = data;
-      for (const listener of listeners) { listener.move?.(url); listener.result?.(data); }
-    },
-    setTheme(theme) {
-      for (const listener of listeners) listener.theme?.(theme);
-    },
-  };
-  return client;
 }

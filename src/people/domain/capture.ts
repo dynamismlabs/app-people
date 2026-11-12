@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import type { AccessScope } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import type { AccessScope } from '../../lib/data.js';
 import type { Ctx } from './context.js';
 import { saveNote } from './notes.js';
 import { createManualPerson, getPersonRow, resolvePersonId, savePerson, searchPeople, summarizePeople } from './people.js';

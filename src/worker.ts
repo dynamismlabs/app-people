@@ -1,18 +1,9 @@
-import { createRequestHandler } from "react-router";
-import serverBuild from "virtual:app-builder/ssr";
-import { createApp } from "@app-builder/core";
-import { createWorkerPlatform, runScheduled } from "@app-builder/core/worker";
-import { application } from "./app";
-import viewHTML from "../dist/mcp.html";
-const render = createRequestHandler(serverBuild, "production");
+// People runs on the Mac (the kit's Node target) only. Its records are kept
+// with synchronous SQLite transactions, which Cloudflare D1 doesn't offer
+// (docs/parity.md). The kit's build still bundles a Worker entry, so this one
+// answers every request with that explanation instead of the app.
 export default {
-  // The nightly backup and the app's own jobs (wrangler.jsonc lists both cron triggers).
-  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(runScheduled(application, env, controller.cron)); },
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    if (/^\/(assets\/|offline\.html$|sw\.js$|manifest\.webmanifest$|icon\.svg$)/.test(new URL(request.url).pathname)) return env.ASSETS.fetch(request);
-    const platform = createWorkerPlatform(env);
-    const app = createApp({ ...application, viewHTML }, () => platform);
-    app.all("*", (c) => render(c.req.raw, { platform }));
-    return app.fetch(request, env, ctx);
+  fetch() {
+    return new Response("People runs on your Mac, not on Cloudflare. Install it with app-builder serve --install.", { status: 501, headers: { "content-type": "text/plain; charset=utf-8" } });
   },
 };

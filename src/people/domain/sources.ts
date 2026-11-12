@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { accountSource } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { calendarCoverage, changeMailWindow, mailCoverage, type CalendarCheckpoint, type MailCheckpoint } from '@ri/app-kit/sources';
+import { AppError } from '../../lib/contract.js';
+import { accountSource } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { calendarCoverage, changeMailWindow, mailCoverage, type CalendarCheckpoint, type MailCheckpoint } from '../../lib/sources.js';
 import { iso, newId, type Ctx } from './context.js';
 import { Labels, extractionSetting, type ExtractionSetting } from './coverage.js';
 import { cancelQueuedExtraction, enqueueBacklog } from './extraction.js';

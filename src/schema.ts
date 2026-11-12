@@ -1,12 +1,6 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { users } from "@app-builder/core/schema";
-export const books = sqliteTable("books", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id),
-  title: text("title").notNull(),
-  author: text("author").notNull(),
-  status: text("status", { enum: ["want-to-read", "reading", "finished"] }).notNull(),
-  note: text("note").notNull(),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+/**
+ * People keeps its records in SQL tables it writes with plain SQL, as it did
+ * in Ri. Their definitions are the migrations in src/people/domain/migrations.ts,
+ * and the queries live in src/people/domain. Nothing here uses Drizzle tables.
+ */
+export {};

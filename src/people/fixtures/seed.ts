@@ -1,5 +1,5 @@
-import { newMailCheckpoint, newCalendarCheckpoint, parseGmailMessage, type CalendarEvent } from '@ri/app-kit/sources';
-import type { AccessScope } from '@ri/app-kit/data';
+import { newMailCheckpoint, newCalendarCheckpoint, parseGmailMessage, type CalendarEvent } from '../../lib/sources.js';
+import type { AccessScope } from '../../lib/data.js';
 import { iso, newId, type Ctx } from '../domain/context.js';
 import { saveAffiliation } from '../domain/affiliations.js';
 import { ingestEvent, ingestMail, linkInteraction } from '../domain/interactions.js';

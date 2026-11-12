@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import { sha256 } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import { sha256 } from '../../lib/data.js';
 import { iso, newId, type Ctx, type Row } from './context.js';
 import { getPersonRow, refreshPerson } from './people.js';
 import { getOrganizationRow, refreshOrganization } from './organizations.js';

@@ -1,4 +1,4 @@
-import { z } from 'zod/v4';
+import { z } from 'zod/v3';
 import type { Ctx } from './context.js';
 import { refreshPerson } from './people.js';
 import { indexOpportunity, type OpportunityRow } from './pipelines.js';

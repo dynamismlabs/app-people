@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, ButtonRow, EmptyState, SegmentedControl, SplitView, StatusLabel, useAppLayout, useQuery, useRiApp } from '@ri/app-kit/ui';
+import { Button, ButtonRow, EmptyState, SegmentedControl, SplitView, StatusLabel, useAppLayout, useQuery, useRiApp } from './kit/index.js';
 import type { Commitment, Coverage, Fact, TaskLink } from '../schemas.js';
 import { dateLabel, dayLabel, meetingLabel } from './format.js';
 import { CommitmentRow, FactRow, PersonWorkspace } from './person.js';

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AskRiButton, Avatar, Button, ButtonRow, Checkbox, ConflictNotice, DateInput, Dialog, EmptyState, InlineError, KeyValueList, Menu, Notice, SectionPanel,
   Select, TextArea, TextInput, Timeline, useAnnounce, useQuery, useRiApp, type TimelineItem as KitTimelineItem,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { Affiliation, Briefing, Commitment, Fact, Identity, Note, PersonDetail, TimelineItem } from '../schemas.js';
 import { dateLabel, dayLabel, meetingLabel, updatedLabel } from './format.js';
 import { Cite, CoverageFooter, DueLabel, Failure, Field, Loading, NameLink, RecordTabs, TaskStatus, useSave, usePeople } from './shared.js';

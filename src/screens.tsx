@@ -1,83 +1,116 @@
 import React, { useEffect, useState } from "react";
-import { Routes, Route, Link } from "react-router";
-import { useAction, useAppClient, ConnectionSettings, ConsentScreen, PendingSaves, Modal, Button, Form, ViewCard } from "@app-builder/core/react";
-import { appConfig } from "../app.config";
+import { Routes, Route } from "react-router";
+import { useAppClient, ConnectionSettings, ConsentScreen, ViewCard } from "@app-builder/core/react";
+import { AppFrame, RiAppProvider, installStyles } from "./people/view/kit/index.js";
+import { PeopleApp } from "./people/view/app.js";
+import { peopleCss } from "./people/view/styles.js";
+import { dateLabel, dayLabel, meetingLabel } from "./people/view/format.js";
 
-import type { books } from "./schema";
-type Book = typeof books.$inferSelect;
+// People's screens are the ones it had in Ri (src/people/view), on the kit's client.
+if (typeof document !== "undefined") installStyles(peopleCss);
 
-const labels = { reading: "Reading", "want-to-read": "Want to read", finished: "Finished" };
-export function Library() {
-  const client = useAppClient();
-  const { data: books = [], loading, error, refresh } = useAction<Book[]>("list_books");
-  const [filter, setFilter] = useState("all");
-  const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [selected, setSelected] = useState<Book | null>(null);
-  const [saveError, setSaveError] = useState("");
-  const [busy, setBusy] = useState(false);
-  useEffect(() => () => client.select(null), [client.select]);
-  const visible = books.filter((book) => (filter === "all" || book.status === filter) && `${book.title} ${book.author}`.toLowerCase().includes(query.toLowerCase()));
-  const select = (book: Book | null) => { setSelected(book); client.select(book ? { id: book.id, title: book.title } : null); };
-  return <div className="workspace">
-    <header className="app-header"><Link to="/" className="brand"><span className="brand-mark" aria-hidden="true">▥</span>{appConfig.name}</Link>{!client.embedded && <Link className="settings-link" to="/settings">Settings</Link>}</header>
-    <main className="library">
-      <div className="page-heading"><div><p className="eyebrow">Your own little library</p><h1>Keep the good ones.</h1><p className="subtitle">Books you’re reading, books you loved, and what comes next.</p></div><Button className="primary" onClick={() => setAdding(true)}>＋ Add a book</Button></div>
-      <PendingSaves /><div className="toolbar"><div className="tabs" aria-label="Reading status">{[["all", "All books"], ...Object.entries(labels)].map(([value, label]) => <button key={value} className={filter === value ? "tab active" : "tab"} onClick={() => setFilter(value)}>{label}<span>{books.filter((book) => value === "all" || book.status === value).length}</span></button>)}</div><input className="search" type="search" placeholder="Find a book…" aria-label="Find a book" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      {error && <p role="alert" className="error">{error} <button className="text-button" onClick={() => void refresh()}>Try again</button></p>}
-      {loading ? <p className="empty">Opening your shelves…</p> : visible.length ? <div className="book-list">{visible.map((book, index) => <button className={selected?.id === book.id ? "book-row selected" : "book-row"} key={book.id} onClick={() => select(book)}>
-        <span className={`book-cover cover-${index % 5}`} aria-hidden="true"><span>{book.title}</span><small>{book.author}</small></span>
-        <span className="book-copy"><strong>{book.title}</strong><span>{book.author || "Author unknown"}</span>{book.note && <p>{book.note}</p>}</span>
-        <span className={`status status-${book.status}`}>{labels[book.status]}</span><span className="row-arrow" aria-hidden="true">↗</span>
-      </button>)}</div> : <div className="empty-state"><span className="empty-book" aria-hidden="true">▥</span><h2>{query ? "No books found." : "Your next chapter starts here."}</h2><p>{query ? "Try another title or author." : "Add your first book, then leave a note worth coming back to."}</p>{!query && <Button className="primary" onClick={() => setAdding(true)}>Add your first book</Button>}</div>}
-      <footer className="library-footer"><span>{books.length} {books.length === 1 ? "book" : "books"} in your library</span><span>{client.localOwner ? "Saved on this computer" : "Your private collection"}</span></footer>
-    </main>
-    {selected && <aside className="detail-panel"><button className="close" aria-label="Close book" onClick={() => select(null)}>×</button><p className="eyebrow">From your library</p><h2>{selected.title}</h2><p className="detail-author">{selected.author}</p><label>Reading status<select value={selected.status} onChange={async (event) => {
-      try { const updated = await client.call<Book>("update_book", { ...selected, expectedUpdatedAt: selected.updatedAt, status: event.target.value }); select(updated); client.didChange(`Marked “${updated.title}” as ${labels[updated.status].toLowerCase()}`); await refresh(); }
-      catch (error) { setSaveError((error as Error).message); }
-    }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <Form onSubmit={async (form) => {
-        setBusy(true); setSaveError("");
-        try { const updated = await client.call<Book>("update_book", { ...selected, note: form.get("note"), expectedUpdatedAt: selected.updatedAt }); select(updated); client.didChange(`Updated the note on “${updated.title}”`); await refresh(); }
-        catch (error) { setSaveError((error as Error).message); } finally { setBusy(false); }
-      }} key={selected.updatedAt}><label>Your notes<textarea name="note" rows={8} defaultValue={selected.note} placeholder="A passage, a thought, a reason to remember…" /></label>{saveError && <p role="alert" className="error">{saveError}</p>}<Button className="primary" disabled={busy}>{busy ? "Saving…" : "Save note"}</Button></Form>
-    </aside>}
-    {adding && <Modal open={adding} onOpenChange={setAdding} title="Add a book"><Form onSubmit={async (form) => {
-      setBusy(true); setSaveError("");
-      try {
-        await client.save("save_book", { id: crypto.randomUUID(), title: form.get("title"), author: form.get("author"), status: form.get("status"), note: form.get("note") });
-        client.didChange(`Added “${String(form.get("title"))}”`);
-        setAdding(false); await refresh();
-      } catch (error) { setSaveError((error as Error).message); } finally { setBusy(false); }
-    }}><label>Title<input name="title" required maxLength={240} autoFocus placeholder="The book on your mind" /></label><label>Author<input name="author" maxLength={160} placeholder="Who wrote it?" /></label><label>Status<select name="status" defaultValue="want-to-read">{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>A note<textarea name="note" rows={3} placeholder="Optional. What drew you to this book?" /></label>{saveError && <p role="alert" className="error">{saveError}</p>}<Button className="primary" disabled={busy}>{busy ? "Saving…" : "Add to library"}</Button></Form></Modal>}
-  </div>;
+/** A card asks for the whole app at a place (a person, Follow-ups): the same frame goes full screen and opens there. */
+let pendingPath: string | undefined;
+function openInApp(client: ReturnType<typeof useAppClient>, path: string) {
+  pendingPath = path;
+  void client.openFullscreen().catch(() => {});
 }
 
-/** The card show_books draws in a chat: the books it named, each one's status changeable in place. */
-export function BooksCard({ data }: { data: { title: string; books: Book[]; more: boolean } }) {
+export function PeopleScreen() {
   const client = useAppClient();
-  const [items, setItems] = useState(data.books);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  useEffect(() => { setItems(data.books); }, [data.books]);
-  useEffect(() => () => client.select(null), [client.select]);
-  return <ViewCard title={data.title} count={items.length ? `${items.length}${data.more ? "+" : ""}` : undefined} footer={data.more ? `More in your ${client.config.name}.` : undefined}>
-    {error && <p role="alert" className="error">{error}</p>}
-    {items.length ? <ul className="view-list">{items.map((book, index) => <li key={book.id} className={busy === book.id ? "view-row busy" : "view-row"}>
-      <span className={`book-cover mini cover-${index % 5}`} aria-hidden="true" />
-      <button type="button" className="view-row-body" onClick={() => client.select({ id: book.id, title: book.title })}><strong>{book.title}</strong><span>{book.author || "Author unknown"}</span></button>
-      <select aria-label={`Status of ${book.title}`} value={book.status} disabled={busy === book.id} onChange={async (event) => {
-        setBusy(book.id); setError("");
-        try {
-          const updated = await client.call<Book>("update_book", { ...book, expectedUpdatedAt: book.updatedAt, status: event.target.value });
-          setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
-          client.didChange(`Marked “${updated.title}” as ${labels[updated.status].toLowerCase()}`);
-        } catch (error) { setError((error as Error).message); } finally { setBusy(""); }
-      }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-    </li>)}</ul> : <p className="view-empty">No books match.</p>}
-  </ViewCard>;
+  const [start] = useState(() => { const path = pendingPath; pendingPath = undefined; return path; });
+  useEffect(() => { installStyles(peopleCss); }, []);
+  return <>
+    {!client.embedded && <nav className="people-top" aria-label="App"><a href="/settings">Settings</a></nav>}
+    <RiAppProvider initialPath={start}><AppFrame><PeopleApp /></AppFrame></RiAppProvider>
+  </>;
 }
+
+type Ref = { id: string; name: string };
+type Summary = { id: string; name: string; company: Ref | null; role: string | null; lastExchangeAt: string | null; nextMeeting: { at: string; title: string } | null };
+type FollowUp = { id: string; action: string; dueDate: string | null; person: Ref | null; direction: "i_owe" | "waiting_on" };
+
+function useSelection() {
+  const client = useAppClient();
+  useEffect(() => () => client.select(null), [client.select]);
+  return (record: Ref | null) => client.select(record ? { id: record.id, title: record.name } : null);
+}
+
+function FollowUpRows({ items, onPerson }: { items: FollowUp[]; onPerson(person: Ref): void }) {
+  return <ul className="view-list">{items.map((item) => <li key={item.id} className="view-row">
+    <button type="button" className="view-row-body" onClick={() => item.person && onPerson(item.person)}>
+      <strong>{item.action}</strong>
+      <span>{[item.direction === "i_owe" ? "You owe" : "Waiting on", item.person?.name, item.dueDate ? `due ${dateLabel(item.dueDate)}` : null].filter(Boolean).join(" · ")}</span>
+    </button>
+  </li>)}</ul>;
+}
+
+/** show_people: the people the assistant named or found. */
+export function PeopleCard({ data }: { data: { title: string; people: Summary[]; more: boolean } }) {
+  const client = useAppClient();
+  const select = useSelection();
+  return <div className="people-card"><ViewCard title={data.title} count={data.people.length ? `${data.people.length}${data.more ? "+" : ""}` : undefined} footer={data.more ? "More in People." : undefined}>
+    {data.people.length ? <ul className="view-list">{data.people.map((person) => <li key={person.id} className="view-row">
+      <button type="button" className="view-row-body" onClick={() => { select(person); openInApp(client, `/people/${person.id}`); }}>
+        <strong>{person.name}</strong>
+        <span>{[person.role, person.company?.name].filter(Boolean).join(", ") || "No company recorded"}</span>
+        <span>{person.lastExchangeAt ? `Last exchange ${dayLabel(person.lastExchangeAt)}` : "No exchange yet"}{person.nextMeeting ? ` · Next: ${person.nextMeeting.title}, ${meetingLabel(person.nextMeeting.at)}` : ""}</span>
+      </button>
+    </li>)}</ul> : <p className="view-empty">Nobody matches.</p>}
+  </ViewCard></div>;
+}
+
+/** show_person: one person's card. */
+export function PersonCard({ data }: { data: { id: string; name: string; headline: string | null; company: Ref | null; role: string | null; location: string | null; howMet: string | null; lastExchangeAt: string | null; nextMeeting: { at: string; title: string } | null; followUps: FollowUp[] } }) {
+  const client = useAppClient();
+  const select = useSelection();
+  useEffect(() => { select({ id: data.id, name: data.name }); }, [data.id]);
+  const fields: [string, string | null][] = [
+    ["Works at", [data.role, data.company?.name].filter(Boolean).join(", ") || null],
+    ["Lives in", data.location], ["How you met", data.howMet],
+    ["Last exchange", data.lastExchangeAt ? dayLabel(data.lastExchangeAt) : null],
+    ["Next meeting", data.nextMeeting ? `${data.nextMeeting.title}, ${meetingLabel(data.nextMeeting.at)}` : null],
+  ];
+  return <div className="people-card"><ViewCard title={data.name}>
+    {data.headline && <p className="view-card-foot">{data.headline}</p>}
+    <dl>{fields.filter(([, value]) => value).map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>
+    {data.followUps.length > 0 && <><h2>Follow-ups</h2><FollowUpRows items={data.followUps} onPerson={() => openInApp(client, `/people/${data.id}`)} /></>}
+    {!client.view?.canFullscreen && <p className="view-card-foot">Open People to see their timeline and notes.</p>}
+  </ViewCard></div>;
+}
+
+/** show_follow_ups: what the person owes and is waiting on. */
+export function FollowUpsCard({ data }: { data: { title: string; items: FollowUp[] } }) {
+  const client = useAppClient();
+  const select = useSelection();
+  return <div className="people-card"><ViewCard title={data.title} count={data.items.length ? String(data.items.length) : undefined}>
+    {data.items.length ? <FollowUpRows items={data.items} onPerson={(person) => { select(person); openInApp(client, `/people/${person.id}`); }} /> : <p className="view-empty">Nothing open.</p>}
+  </ViewCard></div>;
+}
+
+/** show_today: meetings, follow-ups, keep in touch and birthdays. */
+export function TodayCard({ data }: { data: { meetings: { id: string; at: string; title: string; people: Ref[] }[]; followUps: FollowUp[]; keepInTouch: { id: string; name: string; lastExchangeAt: string | null }[]; birthdays: { id: string; name: string; inDays: number }[]; empty: boolean } }) {
+  const client = useAppClient();
+  const select = useSelection();
+  const person = (ref: Ref) => { select(ref); openInApp(client, `/people/${ref.id}`); };
+  if (data.empty) return <div className="people-card"><ViewCard title="Today"><p className="view-empty">Nothing needs your attention.</p></ViewCard></div>;
+  return <div className="people-card"><ViewCard title="Today">
+    {data.meetings.length > 0 && <><h2>Meetings</h2><ul className="view-list">{data.meetings.map((meeting) => <li key={meeting.id} className="view-row">
+      <button type="button" className="view-row-body" onClick={() => meeting.people[0] && person(meeting.people[0])}><strong>{meeting.title}</strong><span>{[meetingLabel(meeting.at), meeting.people.map((item) => item.name).join(", ")].filter(Boolean).join(" · ")}</span></button>
+    </li>)}</ul></>}
+    {data.followUps.length > 0 && <><h2>Follow-ups</h2><FollowUpRows items={data.followUps} onPerson={person} /></>}
+    {data.keepInTouch.length > 0 && <><h2>Keep in touch</h2><ul className="view-list">{data.keepInTouch.map((item) => <li key={item.id} className="view-row">
+      <button type="button" className="view-row-body" onClick={() => person(item)}><strong>{item.name}</strong><span>{item.lastExchangeAt ? `Last exchange ${dayLabel(item.lastExchangeAt)}` : "No exchange yet"}</span></button>
+    </li>)}</ul></>}
+    {data.birthdays.length > 0 && <><h2>Birthdays</h2><ul className="view-list">{data.birthdays.map((item) => <li key={item.id} className="view-row">
+      <button type="button" className="view-row-body" onClick={() => person(item)}><strong>{item.name}</strong><span>{item.inDays === 0 ? "Today" : item.inDays === 1 ? "Tomorrow" : `In ${item.inDays} days`}</span></button>
+    </li>)}</ul></>}
+  </ViewCard></div>;
+}
+
 /** Cards for the app's show_* tools. Anything else in an assistant draws the whole app. */
-export const viewCards = { show_books: BooksCard };
+export const viewCards = { show_people: PeopleCard, show_person: PersonCard, show_follow_ups: FollowUpsCard, show_today: TodayCard };
 
-export function AppScreens() { return <Routes><Route path="/" element={<Library />} /><Route path="/settings" element={<ConnectionSettings />} /><Route path="/oauth/consent" element={<ConsentScreen />} /><Route path="*" element={<Library />} /></Routes>; }
+export function AppScreens() {
+  return <Routes><Route path="/settings" element={<ConnectionSettings />} /><Route path="/oauth/consent" element={<ConsentScreen />} /><Route path="*" element={<PeopleScreen />} /></Routes>;
+}

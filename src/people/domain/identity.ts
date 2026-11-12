@@ -1,4 +1,4 @@
-import { emailDomain, isNoReply, isRoleAddress, normalizeEmail } from '@ri/app-kit/sources';
+import { emailDomain, isNoReply, isRoleAddress, normalizeEmail } from '../../lib/sources.js';
 import { iso, newId, type Ctx } from './context.js';
 import { domainOf } from './text.js';
 

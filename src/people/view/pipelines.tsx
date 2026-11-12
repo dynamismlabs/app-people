@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AskRiButton, Button, ButtonRow, DataTable, DateInput, Dialog, EmptyState, InlineError, Menu, MoneyInput, Notice, RadioGroup, SegmentedControl, Select, SplitView, TextArea, TextInput,
   formatMoney, useAnnounce, useAppLayout, useQuery, type MoneyValue,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { Coverage, OpportunityDetail, OpportunitySummary, Pipeline } from '../schemas.js';
 import { dateLabel, dayLabel } from './format.js';
 import { FactRow, NotesPanel, PersonTimeline } from './person.js';

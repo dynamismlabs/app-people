@@ -1,6 +1,6 @@
-import { AppError } from '@ri/app-kit/contract';
-import { z } from 'zod/v4';
-import type { AppInvocation } from '@ri/app-kit/sdk';
+import { AppError } from '../../lib/contract.js';
+import { z } from 'zod/v3';
+import type { AppInvocation } from '../../lib/contract.js';
 import { actor, ctx, requireOwner, writeScope } from '../runtime.js';
 import { closeReview, decideIdentity, getReviewRow } from '../domain/reviews.js';
 import { merge, undoMerge, undoPreview } from '../domain/merge.js';

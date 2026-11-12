@@ -1,12 +1,12 @@
-import { AppError } from '@ri/app-kit/contract';
-import { accountSource } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { accountSource } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { z } from 'zod/v3';
 import { accessOf, ctx, granted, readScope, requireOwner, writeScope } from '../runtime.js';
 import { Labels, extractionSetting } from '../domain/coverage.js';
 import { dataRevision, isAccountSource, touch } from '../domain/scope.js';
 import { describeViewContext, viewContextSchema } from '../domain/context-packets.js';
-import { configureSource, deleteSourceData, listSources, pauseSource, saveCollection, setExtraction, shareableSources } from '../domain/sources.js';
+import { configureSource, deleteSourceData, listSources, pauseSource, saveCollection, setExtraction } from '../domain/sources.js';
 import { backgroundStep, type JobKind } from '../domain/sync.js';
 import { listExclusions, saveExclusion } from '../domain/exclusions.js';
 import { applyImport, previewImport } from '../domain/imports/import.js';
@@ -74,11 +74,8 @@ export const commonActions = [
       const landing = navigation.landing.startsWith('view:') ? 'people' : navigation.landing;
       const where = input.path.replace(/\/+$/, '') === '' ? route(`/${landing}`) : route(input.path);
       const owner = scope.kind === 'owner';
-      if (where.section === 'access') {
-        if (!owner || invocation.principal.kind === 'fixture' && invocation.principal.fixtureAudience === 'agent') throw new AppError('forbidden', 'Only the owner can choose account access');
-        const actorId = input.query.hostActor;
-        if (!actorId || !/^(chat|workspace|job|background):[^\s]{1,128}$/.test(actorId)) throw new AppError('invalid_input', 'Choose a chat in Ri before selecting what it may use');
-      }
+      // Ri opened this place to choose what a chat may use. The kit's consent screen asks that now, per connection.
+      if (where.section === 'access') throw new AppError('not_found', "Each assistant's access is chosen when it connects to People, and changed in People's Settings");
       const extraction = extractionSetting(c);
       const people = Number(c.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM persons WHERE merged_into IS NULL')?.count ?? 0);
       const organizations = Number(c.db.get<{ count: number }>('SELECT COUNT(*) AS count FROM organizations WHERE merged_into IS NULL')?.count ?? 0);
@@ -92,7 +89,7 @@ export const commonActions = [
         navigation, pinnedViews: pinnedViews(c, scope),
         extraction: { status: extraction.status, reason: extraction.reason },
         collections: c.db.all<{ source_key: string; label: string }>('SELECT source_key, label FROM collections WHERE archived_at IS NULL ORDER BY source_key = \'manual\' DESC, label LIMIT 50').filter((row) => owner || scope.sources.has(row.source_key)).map((row) => ({ key: row.source_key as 'manual', label: row.label })),
-        access: where.section === 'access' ? { actorId: input.query.hostActor!, sources: shareableSources(c, accessOf(invocation)) } : null,
+        access: null,
         query: Object.fromEntries(Object.entries(input.query).filter(([key]) => key !== 'hostActor').slice(0, 20)),
         attention: owner ? {
           reconnect: c.accounts.list().filter((account) => account.status === 'reconnect' && (accessOf(invocation)?.accounts.some((grant) => grant.account === account.account) ?? true)).length,
@@ -101,7 +98,6 @@ export const commonActions = [
         } : { reconnect: 0, failed: 0, reviews: 0 },
       };
       if (where.section === 'today' && input.query.view?.startsWith('view:') && navigation.landing.startsWith('view:')) data.route = { section: 'people', id: null };
-      if (where.section === 'access') return { resource: RESOURCE, data, scope: { actions: ['create_scope'], bindings: { actorId: input.query.hostActor } } };
       return { resource: RESOURCE, data, scope: { actions: owner && invocation.audience === 'user' ? userActions : readActions } };
     },
   }),
@@ -115,51 +111,6 @@ export const commonActions = [
     handler(input, invocation) {
       const c = ctx(), scope = readScope(invocation);
       return describeViewContext(c, scope, input, c.instanceId, granted(invocation));
-    },
-  }),
-  action({
-    name: 'create_scope',
-    description: 'Create the data scope a chat or agent may use in People: chosen accounts, collections and imports, and whether it may read or also write. Opened by Ri\'s access dialog with the chat bound by the host. The scope takes effect only when Ri saves the grant.',
-    input: z.object({ actorId: z.string().min(1).max(200), sources: z.array(sourceKeySchema).min(1).max(200), operations: z.array(z.enum(['read', 'write'])).min(1).max(2), label: z.string().max(200).optional() }).strict(),
-    output: z.object({ scopeRef: z.string() }).strict(),
-    audience: ['user'], effect: 'app_write', retry: 'idempotent', errors: WRITE_ERRORS, visibility: 'app',
-    examples: [{ input: { actorId: 'chat:0194d7a0-0000-7000-8000-00000000cc01', sources: ['account:fixture-personal', 'manual'], operations: ['read'], label: 'Personal Gmail and your records' }, output: { scopeRef: ID.scope } }],
-    handler(input, invocation) {
-      const c = ctx(), scope = writeScope(invocation);
-      requireOwner(scope);
-      return c.mutate(invocation, 'create_scope', input, () => {
-        const known = new Set(shareableSources(c, accessOf(invocation)).map((item) => item.key));
-        if (input.sources.some((source) => !known.has(source))) throw new AppError('invalid_input', 'Choose from the listed accounts and collections');
-        const labels = new Labels(c);
-        const record = c.scopes.create({ actorId: input.actorId, label: input.label ?? input.sources.map((source) => labels.of(source)).join(', '), sources: input.sources, operations: input.operations });
-        touch(c);
-        return { scopeRef: record.id };
-      });
-    },
-  }),
-  action({
-    name: 'list_scopes',
-    description: 'The data scopes the owner has created for chats and agents, with their sources and operations.',
-    input: z.object({}).strict(),
-    output: z.object({ items: z.array(z.object({ scopeRef: z.string(), actorId: z.string(), label: z.string().max(200), sources: z.array(z.object({ key: z.string(), label: z.string().max(300) }).strict()).max(200), operations: z.array(z.enum(['read', 'write'])), createdAt: z.string(), revokedAt: z.string().nullable() }).strict()).max(200) }).strict(),
-    audience: ['user'], effect: 'read', retry: 'read_safe', errors: READ_ERRORS, visibility: 'app',
-    examples: [{ input: {}, output: { items: [{ scopeRef: ID.scope, actorId: 'chat:0194d7a0-0000-7000-8000-00000000cc01', label: 'Personal Gmail', sources: [{ key: 'account:fixture-personal', label: 'Personal Gmail' }], operations: ['read'], createdAt: T.now, revokedAt: null }] } }],
-    handler(_input, invocation) {
-      const c = ctx(); requireOwner(readScope(invocation));
-      const labels = new Labels(c);
-      return { items: c.scopes.list().map((item) => ({ scopeRef: item.id, actorId: item.actorId, label: item.label, sources: item.sources.map((key) => ({ key, label: labels.of(key) })), operations: item.operations, createdAt: item.createdAt, revokedAt: item.revokedAt })) };
-    },
-  }),
-  action({
-    name: 'revoke_scope',
-    description: 'Revoke a chat\'s data scope immediately. Its next request is refused.',
-    input: z.object({ scopeRef: z.string().min(1).max(200) }).strict(),
-    output: z.object({ status: z.literal('saved') }).strict(),
-    audience: ['user'], effect: 'app_write', retry: 'idempotent', errors: WRITE_ERRORS, visibility: 'app',
-    examples: [{ input: { scopeRef: ID.scope }, output: { status: 'saved' } }],
-    handler(input, invocation) {
-      const c = ctx(); requireOwner(writeScope(invocation));
-      return c.mutate(invocation, 'revoke_scope', input, () => { c.scopes.revoke(input.scopeRef); c.db.run("UPDATE work_items SET state = 'cancelled' WHERE kind = 'briefing' AND state = 'pending' AND payload LIKE ?", `%${input.scopeRef}%`); touch(c); return { status: 'saved' as const }; });
     },
   }),
   action({
@@ -240,7 +191,7 @@ export const commonActions = [
     async handler(input, invocation) {
       const c = ctx(), scope = writeScope(invocation); requireOwner(scope);
       const accounts = accessOf(invocation)?.accounts ?? [];
-      if (isAccountSource(input.source) && !accounts.some((grant) => accountSource(grant.account) === input.source)) throw new AppError('forbidden', 'Grant People access to this account in Ri first');
+      if (isAccountSource(input.source) && !accounts.some((grant) => accountSource(grant.account) === input.source)) throw new AppError('forbidden', 'Allow People to read this account on its page in Ri first');
       return backgroundStep(c, invocation, { scope, sources: new Set([input.source]), accounts, automaticOnly: false, only: input.source });
     },
   }),

@@ -1,4 +1,4 @@
-import type { AccessScope } from '@ri/app-kit/data';
+import type { AccessScope } from '../../lib/data.js';
 import type { Ctx } from './context.js';
 import { canSee, opportunityFilter, sourceFilter } from './scope.js';
 import type { Labels } from './coverage.js';

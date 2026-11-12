@@ -9,9 +9,9 @@
  * https://developers.google.com/workspace/gmail/api/guides/sync
  * https://developers.google.com/workspace/calendar/api/guides/sync
  */
-import { z } from "zod/v4";
+import { z } from "zod/v3";
 import { AppError } from "./contract.js";
-import type { AppInvocation } from "./sdk.js";
+import type { AppInvocation } from "./contract.js";
 import { nowIso, sha256, transaction, type SqlDatabase } from "./data.js";
 
 type Capable = Pick<AppInvocation, "capability" | "signal">;
@@ -685,11 +685,6 @@ const accountRow = (row: Record<string, unknown>): SourceAccount => ({
  * it describes, so a restart resumes from the last committed page.
  */
 export function createAccountStore(db: SqlDatabase) {
-  db.exec(`CREATE TABLE IF NOT EXISTS app_source_accounts (
-    account TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('mail','calendar')),
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, label TEXT, history_days INTEGER NOT NULL,
-    checkpoint TEXT, calendars TEXT NOT NULL, paused INTEGER NOT NULL, status TEXT NOT NULL,
-    last_error TEXT, last_success_at TEXT, PRIMARY KEY (account, kind));`);
   const get = (account: string, kind: SourceKind) => {
     const row = db.prepare("SELECT * FROM app_source_accounts WHERE account = ? AND kind = ?").get(account, kind);
     return row ? accountRow(row) : null;
@@ -736,11 +731,6 @@ export type AccountStore = ReturnType<typeof createAccountStore>;
  * after an interruption without reading bodies again.
  */
 export function createMailIndex(db: SqlDatabase) {
-  db.exec(`CREATE TABLE IF NOT EXISTS app_mail_messages (
-    account TEXT NOT NULL, message_id TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-    thread_id TEXT NOT NULL, outcome TEXT NOT NULL CHECK (outcome IN ('kept','skipped','removed')),
-    received_at TEXT, digest TEXT, PRIMARY KEY (account, message_id));
-  CREATE INDEX IF NOT EXISTS app_mail_messages_thread ON app_mail_messages (account, thread_id);`);
   return {
     seen(account: string, messageId: string): boolean {
       return !!db.prepare("SELECT 1 FROM app_mail_messages WHERE account = ? AND message_id = ?").get(account, messageId);

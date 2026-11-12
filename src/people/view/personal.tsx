@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Button, ButtonRow, ConflictNotice, Dialog, InlineError, Select, TextArea, TextInput, useAnnounce, useQuery,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { Birthday, PersonDetail, Profile, Relation, RelationKind } from '../schemas.js';
 import { todayLocal } from './format.js';
 import { Cite, Loading, NameLink, useSave, usePeople } from './shared.js';

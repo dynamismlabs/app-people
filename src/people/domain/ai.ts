@@ -1,6 +1,6 @@
-import { AppError } from '@ri/app-kit/contract';
-import type { AppInvocation } from '@ri/app-kit/sdk';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import type { AppInvocation } from '../../lib/contract.js';
+import { z } from 'zod/v3';
 import { iso, type Ctx } from './context.js';
 import { extractionSetting, type ExtractionSetting } from './coverage.js';
 import { touch } from './scope.js';

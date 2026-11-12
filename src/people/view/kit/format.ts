@@ -3,7 +3,7 @@
  * Money is always integer minor units with an explicit ISO currency, never a
  * float, and different currencies are never added together.
  */
-import { formatDate, formatDateRange, formatInstant, relativeDay, isLocalDate, localDate, systemZone, type LocalDate } from "../time.js";
+import { formatDate, formatDateRange, formatInstant, relativeDay, isLocalDate, localDate, systemZone, type LocalDate } from "../../../lib/time.js";
 
 export { formatDate, formatDateRange, formatInstant, relativeDay };
 

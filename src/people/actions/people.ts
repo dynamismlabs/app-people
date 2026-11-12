@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { z } from 'zod/v3';
 import { actor, ctx, granted, readScope, requireOwner, writeScope } from '../runtime.js';
 import { coverageFor, Labels } from '../domain/coverage.js';
 import { dataRevision } from '../domain/scope.js';

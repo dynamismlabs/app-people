@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import type { AccessScope } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import type { AccessScope } from '../../lib/data.js';
 import { iso, newId, type Ctx } from './context.js';
 import type { Labels } from './coverage.js';
 import { refreshOrganization } from './organizations.js';

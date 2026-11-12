@@ -1,6 +1,6 @@
-import { AppError } from '@ri/app-kit/contract';
-import { scopeFingerprint, sha256, type AccessScope } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
+import { AppError } from '../../lib/contract.js';
+import { scopeFingerprint, sha256, type AccessScope } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
 import { iso, type Ctx, type Param } from './context.js';
 
 export const MANUAL = 'manual';

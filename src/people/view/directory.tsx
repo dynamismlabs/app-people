@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Avatar, Button, ButtonRow, Checkbox, DataTable, Dialog, EmptyState, InlineError, Menu, SearchField, Select, SplitView, TextInput, useAnnounce, useQuery,
   type DataColumn, type DataTableSort,
-} from '@ri/app-kit/ui';
+} from './kit/index.js';
 import type { Coverage, OrganizationSummary, PeopleFilters, PersonSummary, SavedView } from '../schemas.js';
 import { coverageLines, dateLabel, dayLabel, isOverdue, meetingLabel } from './format.js';
 import { CompanyWorkspace } from './company.js';

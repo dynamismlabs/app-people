@@ -1,10 +1,10 @@
-import { AppError } from '@ri/app-kit/contract';
-import { accountSource, redact, type AccessScope, type JobRecord } from '@ri/app-kit/data';
-import type { AppInvocation } from '@ri/app-kit/sdk';
+import { AppError } from '../../lib/contract.js';
+import { accountSource, redact, type AccessScope, type JobRecord } from '../../lib/data.js';
+import type { AppInvocation } from '../../lib/contract.js';
 import {
   calendarSyncStep, gmailSyncStep, newCalendarCheckpoint, type CalendarCheckpoint, type MailCheckpoint, type MailHeaders,
-} from '@ri/app-kit/sources';
-import { z } from 'zod/v4';
+} from '../../lib/sources.js';
+import { z } from 'zod/v3';
 import { iso, type Ctx } from './context.js';
 import { extractionSetting } from './coverage.js';
 import { applyRulesToInteraction, linkRuleBatch } from './attribution.js';

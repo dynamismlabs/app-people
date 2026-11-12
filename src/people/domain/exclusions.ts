@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { decodeCursor, encodeCursor } from '@ri/app-kit/data';
-import { emailDomain, normalizeEmail } from '@ri/app-kit/sources';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { decodeCursor, encodeCursor } from '../../lib/data.js';
+import { emailDomain, normalizeEmail } from '../../lib/sources.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx } from './context.js';
 import { touch } from './scope.js';
 import { domainOf } from './text.js';

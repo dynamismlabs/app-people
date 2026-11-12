@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AskRiButton, Avatar, Button, ButtonRow, Dialog, EmptyState, InlineError, Menu, SectionPanel, Select, TextInput, formatMoney, useAnnounce, useQuery, useRiApp } from '@ri/app-kit/ui';
+import { AskRiButton, Avatar, Button, ButtonRow, Dialog, EmptyState, InlineError, Menu, SectionPanel, Select, TextInput, formatMoney, useAnnounce, useQuery, useRiApp } from './kit/index.js';
 import type { Affiliation, OrganizationDetail } from '../schemas.js';
 import { dateLabel, dayLabel } from './format.js';
 import { CommitmentRow, NotesPanel, PersonTimeline, RemoveDialog, UndoMergeDialog } from './person.js';

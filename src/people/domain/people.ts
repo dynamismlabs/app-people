@@ -1,6 +1,6 @@
-import { AppError } from '@ri/app-kit/contract';
-import { decodeCursor, encodeCursor, type AccessScope } from '@ri/app-kit/data';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { decodeCursor, encodeCursor, type AccessScope } from '../../lib/data.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx, type Param } from './context.js';
 import { attachKey, ensureKey, observe, type KeyKind } from './identity.js';
 import { Labels } from './coverage.js';

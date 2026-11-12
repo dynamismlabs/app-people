@@ -1,5 +1,5 @@
-import { AppError } from '@ri/app-kit/contract';
-import type { AccessScope } from '@ri/app-kit/data';
+import { AppError } from '../../lib/contract.js';
+import type { AccessScope } from '../../lib/data.js';
 import type { Ctx } from './context.js';
 import { Labels, coverageFor } from './coverage.js';
 import { personalDetails, relationsFor } from './personal.js';

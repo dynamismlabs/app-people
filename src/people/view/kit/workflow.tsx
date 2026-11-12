@@ -29,6 +29,8 @@ export function AskRiButton({ prompt, children = "Ask Ri", variant = "secondary"
   const announce = useAnnounce();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // App Builder's view client can't stage a chat draft (docs/parity.md), so there is no button.
+  if (!app?.canAsk) return null;
   return (
     <span className="ri-ask">
       <Button

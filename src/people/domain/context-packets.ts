@@ -1,6 +1,6 @@
-import { AppError } from '@ri/app-kit/contract';
-import { boundText, type AccessScope } from '@ri/app-kit/data';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { boundText, type AccessScope } from '../../lib/data.js';
+import { z } from 'zod/v3';
 import type { Ctx } from './context.js';
 import { Labels, coverageFor } from './coverage.js';
 import { visibleAffiliations } from './affiliations.js';

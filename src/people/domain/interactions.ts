@@ -1,7 +1,7 @@
-import { AppError } from '@ri/app-kit/contract';
-import { boundText, decodeCursor, encodeCursor, type AccessScope } from '@ri/app-kit/data';
-import { emailDomain, isPersonalMailDomain, occurrenceKey, withoutQuotedReply, type CalendarEvent, type MailMessage } from '@ri/app-kit/sources';
-import { z } from 'zod/v4';
+import { AppError } from '../../lib/contract.js';
+import { boundText, decodeCursor, encodeCursor, type AccessScope } from '../../lib/data.js';
+import { emailDomain, isPersonalMailDomain, occurrenceKey, withoutQuotedReply, type CalendarEvent, type MailMessage } from '../../lib/sources.js';
+import { z } from 'zod/v3';
 import { iso, newId, type Ctx, type Param } from './context.js';
 import { Labels } from './coverage.js';
 import { ensureKey, observe, type IdentityKey } from './identity.js';
