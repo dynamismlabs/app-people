@@ -1,19 +1,53 @@
 # People
 
-Run pnpm dev for the local UI, pnpm build for production, and pnpm start for the built Node server. The parent workspace builds the core first. An exported app carries its own pinned core package in vendor/.
+People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.0, starter 0.2.0, vendored in `vendor/`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
 
-App identity is in app.config.ts. Actions and migrations are in src/app.ts. The Drizzle schema is in src/schema.ts. The web UI and MCP tools call those same actions through the core. list_books filters by the current viewer. save_book keeps a device-generated ID so retries retain one record. update_book uses expectedUpdatedAt to prevent overwriting a newer edit.
+## Commands
 
-Data lives under ~/.local/share/<app-id> or APP_DATA_DIR. Use a temporary APP_DATA_DIR for tests. Local owner mode is available on loopback. Enable sign-in in Settings before sharing the app, which transfers existing local records to the first account; a restore elsewhere prints a handoff code instead. Every assistant connects with OAuth and sees what the person chose for it on the consent screen (this app has no sources, so only read or also write).
+- `pnpm install --frozen-lockfile`
+- `pnpm typecheck`, `pnpm test` (vitest, disposable data), `pnpm build`
+- `pnpm preview`: the fictional preview in a disposable data directory (`PEOPLE_PREVIEW=1`, `APP_CONNECTORS=fixtures`)
+- `pnpm dev` with a disposable `APP_DATA_DIR`
+- `pnpm exec app-builder serve --install` to run it as the person's service, `pnpm exec app-builder change` to change it. Use `--service process` while developing. Never install a launchd service while developing.
+- `node scripts/oauth-check.mjs http://127.0.0.1:<port>/mcp` connects as any MCP client does and uses the tools.
 
-Append migrations when changing the schema. Preserve existing record IDs. Verify saved records after a restart and after migration. The core version is pinned in package.json and pnpm-lock.yaml.
+## Layout
 
-To run it as the person's service, commit and run `pnpm exec app-builder serve --install`; to change a running app, commit and run `pnpm exec app-builder change`, which checks the commit in a separate copy and switches only when the checks pass (see .agents/skills/build-personal-app/references/run-connect-change.md). Never run the app from this folder against the person's data, and never start a second server on its data directory.
+- `src/app.ts`: the kit application: actions, views, sources, the job, connectors and migrations, all from `src/people`.
+- `src/people/kit.ts`: turns People's actions into kit actions, and defines the `show_*` views, the job (`update_people`, every five minutes), `get_record_title` and the sources a connection can be limited to.
+- `src/people/runtime.ts`: People's synchronous connection to the kit's `data.sqlite`, who is calling (browser owner, connection, job), write receipts, and the hub (accounts it lends, tool names, errors).
+- `src/people/actions/*`: People's actions in the shape they had in Ri, with strict zod (`zod/v3`) input and output, audience, effect and fictional examples.
+- `src/people/domain/*`: the records and rules, unchanged from Ri except where `docs/parity.md` says. `migrations.ts` holds the SQL migrations.
+- `src/people/view/*`: People's React screens from Ri. `view/kit/*` is Ri's UI kit, with `app.tsx` rewritten onto the kit's client.
+- `src/screens.tsx`: the web page, the cards for each `show_*` tool, and the routes. `src/root.tsx` and `src/routes/*` are the kit's.
+- `src/lib/*`: the parts of Ri's app kit People used (errors, cursors, settings, the step queue, account checkpoints, mail parsing and sync steps, dates).
+- `fixtures/connectors.json`: fictional hub answers for `APP_CONNECTORS=fixtures`.
+- `test/*`: People's tests from Ri, run through the kit's adapter, plus `kit.test.ts` for MCP, views, the job and the hub.
+- `legacy/`: Ri's README, AGENTS.md, plugin manifest and skills, for reference only.
 
-Use pnpm typecheck and pnpm test for this app; test data is disposable. MCP tests need a connection's token: createTestConnection from @app-builder/core/node. Build regenerates migrations/ and dist/contract.json. Deploy with pnpm run deploy (pnpm deploy is pnpm's own command). See README.md for Docker, user-service install/uninstall, backups and an empty-target Cloudflare move. All three targets use the same app schema and action policies.
+## Who is calling
 
-Core 0.2.0 supplies sign-in, MCP OAuth with a choice per connection, the shared caller, offline saving, declared jobs and the connector client. This starter declares no sources, jobs or connectors; add them as in .agents/skills/build-personal-app/references/jobs-and-connectors.md. A generated app records its starter version in package.json. The build skill is installed in .agents/skills/build-personal-app on export. Inside the builder repository it lives under skills/.
+- **The person's browser** (no OAuth connection) is the owner: every source and the owner-only actions (audience `user`).
+- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. Sources that no longer exist are ignored. It can call actions with audience `agent`, never owner-only ones.
+- **The job** sees the accounts the hub lends.
 
-Assistants that draw MCP Apps views (ChatGPT, Claude, Ri) get two render tools. show_books (src/app.ts) draws a card of books, by ids or a status filter, where the person can change a book's status; BooksCard in src/screens.tsx draws it. open_reading_log, added by the core, opens the whole app full screen. list_books and the other actions are data tools and draw nothing. The view reaches nothing on the network and runs in a scripts-only sandbox, so it uses Form, dialogs and host tool calls. The selected book publishes its id and title via client.select (a fixed, bounded shape) and clears on leaving the view; changes made in the view are reported with client.didChange. MCP hosts receive it only when they support MCP Apps. A separate browser has no automatic chat handoff. Ri remains optional. React Router, one core package and the Reading Log starter are provisional defaults; public names come from the builder's identity.ts.
+Only the installation's owner uses People. Other signed-in accounts are refused.
 
-The SSR web app uses src/root.tsx for its authorized initial loader, src/routes.ts for framework routes and src/screens.tsx for editable screens. src/main.tsx bundles the offline shell and MCP view. Keep loader data free of platform objects and credentials. Never cache personalized HTML. Store retained external credentials using the core backend vault; restore requires reconnection.
+## The hub
+
+People reads Gmail and Calendar and uses Ri's tasks and AI through the person's hub (Ri), connected once in Settings. It calls Ri's tools by name (`HUB_TOOLS` in `runtime.ts`), because the kit's mail and calendar capabilities don't carry what People needs. Each job run asks the hub which accounts it lends (`refreshHubAccounts`). A missing tool shows as "People hasn't been allowed to …". Tests use `test/helpers.ts`'s fake hub with Ri's shapes; the kit's fixture source can't drive People's sync.
+
+## Rules that must not regress
+
+All of Ri's rules still hold (they're in `legacy/AGENTS.ri.md`), with these changes:
+
+- Every read, search, count, sort key, snippet, export and context packet filters by the caller's scope first (`sourceFilter`, `canSee`). The scope comes from `ctx.scopes.resolve`, built in `runtime.ts`.
+- Domain code is synchronous. Never await inside `ctx.db.tx`: People's connection and the kit's share one file, and a held write lock blocks the kit. A step reads from the hub first and stores in one transaction after.
+- Writes go through `ctx.mutate` with the request id (`requestId` on every action). Updates check `expectedRevision` and return a conflict instead of overwriting.
+- AI runs only through `callAi`, only when extraction is on. With it off, no `ri__ai_text` call may happen.
+- Append migrations to `src/people/domain/migrations.ts` (`app-0005` next). Applied SQL is immutable and checksum-checked; one statement per `-- statement-breakpoint`.
+- Copy: no em or long dashes, avoid semicolons, no sparkle or wand icons.
+
+## Hosting
+
+The Mac (the kit's Node target) only. People's synchronous SQLite can't run on D1, so the Worker entry answers 501. Docker works like the Node service. The data directory is `~/.local/share/people` or `APP_DATA_DIR`. The kit's portable `backup`/`restore` can't restore People's full-text index yet (`docs/parity.md`, K2); a stopped copy of `data.sqlite` restores fully.

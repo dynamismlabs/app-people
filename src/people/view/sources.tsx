@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Button, ButtonRow, DataTable, Dialog, EmptyState, InlineError, Notice, Select, ShareScopeChooser, SourcesScreen, StatusLabel, TextInput, useAnnounce, useQuery, useRiApp,
+  Button, ButtonRow, DataTable, Dialog, EmptyState, InlineError, Notice, Select, SourcesScreen, StatusLabel, TextInput, useAnnounce, useQuery, useRiApp,
   type HistoryDays, type SourceAccount,
 } from './kit/index.js';
 import { localDate } from '../../lib/time.js';
@@ -22,12 +22,10 @@ export function SourcesView() {
   const ui = usePeople();
   const app = useRiApp();
   const sources = useQuery<Sources>('list_sources', {});
-  const scopes = useQuery<{ items: { scopeRef: string; actorId: string; label: string; sources: { key: string; label: string }[]; createdAt: string; revokedAt: string | null }[] }>('list_scopes', {});
   const pause = useSave<unknown>('pause_source');
   const step = useSave<{ summary: string }>('continue_import');
   const remove = useSave<unknown>('delete_source_data');
   const configure = useSave<unknown>('configure_source');
-  const revoke = useSave<unknown>('revoke_scope');
   const announce = useAnnounce();
   const reviewRef = useRef<HTMLElement>(null);
   const importRef = useRef<HTMLDivElement>(null);
@@ -49,22 +47,21 @@ export function SourcesView() {
   }));
   const source = (id: string) => id.split('|')[0]!;
   const account = (id: string) => data.accounts.find((item) => `${item.source}|${item.kind}` === id)!;
-  const reload = () => { void sources.reload(); void scopes.reload(); };
+  const reload = () => { void sources.reload(); };
   return (
     <div className="pe-stack pe-stack--loose">
       <SourcesScreen
         accounts={accounts}
         imports={data.imports.map((item) => ({ id: item.source, name: item.label, kind: item.format === 'linkedin' ? 'LinkedIn export' : item.format === 'vcard' ? 'vCard' : 'CSV', importedAt: item.importedAt, records: (item.counts.created ?? 0) + (item.counts.updated ?? 0) + (item.counts.merged ?? 0), status: 'imported' }))}
-        shares={(scopes.data?.items ?? []).filter((item) => !item.revokedAt).map((item) => ({ id: item.scopeRef, label: item.label, actor: item.actorId.startsWith('chat:') ? 'A chat' : item.actorId, sources: item.sources.map((entry) => entry.label), createdAt: item.createdAt }))}
-        onConnect={() => app.openSources()}
+        // Accounts come through Ri: connecting, and choosing which ones, starts in People's Settings.
+        onConnect={() => app.manageAccess()}
         onManageAccess={() => app.manageAccess()}
         onPause={async (id) => { await pause.run({ account: account(id).account, paused: true }); pause.reset(); reload(); }}
         onResume={async (id) => { await pause.run({ account: account(id).account, paused: false }); pause.reset(); reload(); }}
         onContinue={async (id) => { const result = await step.run({ source: source(id) }); step.reset(); announce(result.summary); reload(); }}
         onDeleteImported={async (id) => { await remove.run({ source: source(id), confirm: true }); remove.reset(); announce('Imported data deleted. Your notes were kept'); reload(); }}
         onChangeHistory={async (id, days) => { const item = account(id); await configure.run({ account: item.account, kind: item.kind, historyDays: days }); configure.reset(); reload(); }}
-        onRevokeShare={async (id) => { await revoke.run({ scopeRef: id }); revoke.reset(); reload(); }}
-        note={<>People reads sent mail, replies and small meetings to find the people you actually correspond with. Bulk, list and no-reply mail is left out before anything else happens, and nothing is ever sent or changed in your accounts. {data.accounts.length ? '' : 'Without an account, add people by hand or import a file.'}</>}
+        note={<>People reads sent mail, replies and small meetings to find the people you actually correspond with. Bulk, list and no-reply mail is left out before anything else happens, and nothing is ever sent or changed in your accounts. {data.accounts.length ? '' : 'Without an account, add people by hand or import a file.'} {data.scopes ? `${data.scopes} assistant${data.scopes === 1 ? ' is' : 's are'} connected, each seeing only what you chose when it connected. See or disconnect them in Settings.` : 'Assistants you connect choose what they may see when they connect. See them in Settings.'}</>}
       />
       <Extraction data={data} reload={reload} />
       <div ref={importRef} className="pe-anchor"><Imports reload={reload} collections={data.collections} /></div>
@@ -344,22 +341,4 @@ function ExportPanel() {
   );
 }
 
-export function AccessView() {
-  const ui = usePeople();
-  const create = useSave<{ scopeRef: string }>('create_scope');
-  const [done, setDone] = useState(false);
-  const access = ui.data.access;
-  if (!access) return <Failure error="Open this from Ri's access dialog for a chat." />;
-  if (done) return <EmptyState title="Access chosen">Ri saves it when you confirm the grant. You can change or remove it later in Sources or in Ri.</EmptyState>;
-  return (
-    <ShareScopeChooser
-      actorLabel="this chat"
-      sources={access.sources.map((source) => ({ id: source.key, label: source.label, textLabel: source.label, description: source.detail }))}
-      operations={[{ id: 'read', label: 'Read these records', description: 'People, companies, timelines, notes and briefings from the chosen sources' }, { id: 'write', label: 'Add and change records', description: 'Notes, follow-ups, lists and opportunities in a chosen collection. Merges, imports and sources stay yours' }]}
-      busy={create.pending}
-      error={create.error}
-      onCreate={async (sources, operations) => { await create.run({ actorId: access.actorId, sources, operations }); setDone(true); }}
-    />
-  );
-}
 export { updatedLabel };

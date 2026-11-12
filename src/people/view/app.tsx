@@ -6,7 +6,7 @@ import type { OpenData } from '../actions/common.js';
 import { Directory } from './directory.js';
 import { AffiliationDialog } from './person.js';
 import { OpportunityDialog, PipelinesView } from './pipelines.js';
-import { AccessView, SourcesView } from './sources.js';
+import { SourcesView } from './sources.js';
 import { FollowUpsView, TodayView } from './today.js';
 import { EvidenceDialog, FollowUpHost, PlusIcon, UiProvider, useSave, type PeopleUi, type Route, type Section } from './shared.js';
 
@@ -32,13 +32,7 @@ export function PeopleApp() {
   const app = useRiApp<OpenData>();
   const data = app.data;
   if (!data) return <div className="ri-app"><main className="ri-shell"><LoadingState label="Opening People" /></main></div>;
-  if (data.route.section === 'access') return <AccessShell data={data} />;
   return <Main data={data} />;
-}
-
-function AccessShell({ data }: { data: OpenData }) {
-  const ui = useMemo<PeopleUi>(() => ({ data, route: { section: 'sources', record: null, query: {} }, go() {}, back() {}, setQuery() {}, openPerson() {}, openCompany() {}, openOpportunity() {}, showEvidence() {}, followUp() {} }), [data]);
-  return <UiProvider value={ui}><AppShell eyebrow="People" title="Choose what this chat can use" context="Accounts, collections and imports, and whether it may also add records."><AccessView /></AppShell></UiProvider>;
 }
 
 function Main({ data }: { data: OpenData }) {
