@@ -73,10 +73,24 @@ export function fromPeople(definition: ActionDefinition<any, any>): Action {
     audience: definition.audience.filter((item): item is 'user' | 'agent' => item === 'user' || item === 'agent'),
     handler: async (kit, raw) => {
       const { requestId: id, ...rest } = raw as Record<string, unknown> & { requestId?: string };
+      if (FRESH_ACCOUNTS.has(definition.name) && !kit.connection && !kit.job && !previewMode()) await freshAccounts(kit);
       try { return await withInvocation(kit, { requestId: id }, (invocation) => definition.handler(definition.input.parse(rest), invocation)); }
       catch (error) { throw kitError(error); }
     },
   });
+}
+
+/**
+ * In Ri the owner's view always carried the current grant. Here the job asks
+ * the hub which accounts it lends; Sources asks again when that's over a
+ * minute old, so a newly allowed account shows up without waiting for the job.
+ */
+const FRESH_ACCOUNTS = new Set(['list_sources', 'continue_import', 'configure_source']);
+async function freshAccounts(kit: Context) {
+  const c = await contextFor(kit.platform);
+  const checked = hubAccounts(c.db).checkedAt;
+  if (checked && Date.now() - Date.parse(checked) < 60_000) return;
+  await refreshHubAccounts(kit, c).catch(() => undefined);
 }
 
 const byName = new Map(peopleActions.map((item) => [item.name, item]));

@@ -10,12 +10,15 @@ Checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0) and Ri's 
 
 ## The short version
 
-**Everything People does works on App Builder except four things**, and two of those are small kit additions:
+**Almost everything People did works on App Builder: its screens, data, rules, imports, sync, AI features, follow-ups and privacy model, with all of its tests.** These can't work today:
 
 1. **People's view inside Ri can't do owner-only work** (Sources, imports, export, merges, deleting records, navigation). The kit can't tell a tool call made by the view from one made by the model, so those actions are only in People's own page in the browser. Needs app-only tools (MCP Apps `visibility: ["app"]`) in the kit, enforced by Ri.
-2. **"Ask Ri" and downloads don't work inside a chat.** The kit's view client has no way to stage a chat message, open a link or save a file. Needs those MCP Apps host calls in the kit's client (and a download call in Ri's host).
+2. **"Ask Ri", downloads and links don't work inside a chat.** The kit's view client has no way to stage a chat message, open a link or save a file. Needs those host calls in the kit's client (and a download call in Ri's host).
 3. **The kit's portable backup can't restore People.** It copies the internal tables SQLite keeps for People's full-text search, and restoring them fails. A database-file restore (what `change` uses for rollback) works. Needs the kit's snapshot to skip FTS5 shadow tables.
-4. **People can't run on Cloudflare.** Its records need synchronous SQLite transactions, which D1 doesn't have and the kit doesn't expose. People never ran on Cloudflare, so this loses nothing it had, but it's a limit of the kit for apps like it.
+4. **Ri can't link to a person, company or opportunity**, and **People's three skills can't ship with it**: MCP has no record registry or deep links, and the kit has no MCP prompts.
+5. **People can't run on Cloudflare.** Its records need synchronous SQLite transactions, which D1 doesn't have and the kit doesn't expose. People never ran on Cloudflare, so this loses nothing it had, but it's a limit of the kit for apps like it.
+
+Two things work only through stopgaps that depend on wording rather than structure, and should be fixed in the kit and Ri: finding which accounts Ri lent (K4, R1) and telling "not found" from other hub errors (K5).
 
 What changed shape, and works:
 
@@ -50,7 +53,7 @@ What changed shape, and works:
 | Ask Ri buttons (on a person, company, opportunity) staging an editable chat draft | Can't work | The kit's view client can't stage a chat message (MCP Apps offers `ui/message`, which sends rather than stages, and the kit doesn't expose it). The buttons are hidden. Needs the kit's client to expose a message call, and Ri to stage rather than send. |
 | Downloads from the view (export CSV and JSON) | Works differently | In People's own page the export downloads as before. Inside a chat the view says to open People in the browser: the kit's client has no download call (Ri's host had one). The kit's Settings also has "Download my data", which includes People's export (format version 2). |
 | Opening links and directions from the view | Works differently | In the browser they open. Inside a chat they can't: the kit's client doesn't expose MCP Apps `ui/open-link`. |
-| The view in Ri's dark mode and at every width | Works | The kit applies the host's theme to `<html data-theme>`, which People's styles already used. Not screenshot-tested at every width any more (the Ri packaging test is gone, see Tests). |
+| The view in Ri's dark mode and at every width | Works differently | Inside an assistant the kit puts the host's theme on `<html data-theme>`, which People's styles already follow. People's own page in the browser is always light (nothing sets the theme there). Not checked inside a real host, and not screenshot-tested at every width any more (the Ri packaging test is gone, see Tests). |
 
 ## Inputs
 
@@ -110,7 +113,7 @@ All unchanged and enforced by the same code: lists 50 by default and at most 100
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| People's actions available to chats | Works | 41 of People's actions are MCP tools, each with an output schema. Owner-only ones aren't (above). |
+| People's actions available to chats | Works | 40 of People's actions are MCP tools, plus `get_record_title`, the four cards and `open_people` (46 in all), each with an output schema. Owner-only ones aren't (above). |
 | The People view opened in Ri (`open_view`, entry points global and thread) | Works differently | `open_people` (added by the kit) opens the whole app full screen. `open_view` stays as the data the screens load. |
 | Cards in a chat | Works, new | `show_people`, `show_person`, `show_follow_ups` and `show_today`. Ri drew only the whole view. |
 | View context: section, filters and up to 50 selected records, re-resolved for the receiving chat (`describe_view_context`) | Works differently | The kit sends one selected record's id and title (its bounded selection). `get_record_title` gives the title only for records the connection may see. `describe_view_context` remains a tool an assistant can call. Needs a richer selection in the kit, or Ri calling `describe_view_context`, to match. |
@@ -165,9 +168,15 @@ Every old test file is ported and passes through the kit's adapter, except the p
 
 ## Kit version
 
-Built from kit `main` at `bc2c7f4` (core 0.2.0, vendored in `vendor/`). See the end of this file for the update check before finishing.
+Built from kit `main` at `bc2c7f4` (core 0.2.0, vendored in `vendor/`). Before finishing, `origin/main` was still `bc2c7f4`:
+- The refresh-token fix (rotate refresh tokens, revoke a connection when one is reused) is on the kit's `claude/refresh-token-rotation` branch, not on `main`. People doesn't have it.
+- There's no upgrade command on `main` (it's on the kit's `claude/app-commands` branch). Until it lands, taking a kit fix means replacing `vendor/app-builder-core-*.tgz` and the lockfile by hand, then `change`.
 
 ## Evidence
 
-- `pnpm test`: 18 files, 122 tests pass, 1 expected failure (the kit backup gap).
-- `pnpm typecheck` and `pnpm build` pass. The build writes 46 MCP tools to `dist/contract.json`.
+- `pnpm typecheck`, `pnpm build` and `pnpm test` pass: 18 files, 122 tests, and 1 expected failure (the kit backup gap, K2). The build writes 46 MCP tools to `dist/contract.json`.
+- `pnpm exec app-builder serve --install --service process` with a disposable `APP_DATA_DIR` ran resolve, copy, install, typecheck, test, build, rehearse, stop, snapshot and switch, and `/api/health` answered with the new release. (Its first try refused to switch because a test that depended on two records saved in the same millisecond failed in the copy; fixed.) Then `change --json` switched the running app to a later commit with its records kept. No launchd service was installed.
+- `scripts/oauth-check.mjs`, a standard MCP client (`@modelcontextprotocol/sdk` 1.32.2), against that running app: 401 with `resource_metadata`, dynamic registration, PKCE S256, People's consent screen in a browser with no sign-in (chose only the "Work" collection and read-only), token with a refresh token, 46 tools; `list_people` returned only the Work person, `show_today` drew its card, and `capture_about_person` was refused: "Ri · Work can read but not make changes."
+- A browser check of `pnpm preview`'s fictional world: Today, the directory and a person's page render on the kit's client.
+- Hub features are tested two ways: against a fake hub with Ri's tool names and shapes (`test/helpers.ts`), and against the kit's own fixture source (`test/kit.test.ts`), which drives Ri's task services and shows where it can't drive People's sync (K3).
+- Not run: Ri itself (its client, its hub's consent, its view host), Claude or ChatGPT, a real Gmail or Calendar account, and People's full view inside an MCP Apps host.
