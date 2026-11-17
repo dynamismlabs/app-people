@@ -118,7 +118,7 @@ All work, unchanged, with their tests: email normalization (trim, lower-case onl
 
 ## Limits
 
-All unchanged and enforced by the same code: lists 50 by default and at most 100; selection and bulk changes at most 50 loaded records; imported files 512 KiB and 5,000 rows; chat context at most 20 facts or commitments and 20 interaction references within 16 KiB; AI prompts at most 16,000 characters, marked untrusted, results checked against a strict format with exact passages; list, search and detail under 300 ms at p95 on 10,000 people, 1,000 companies and 100,000 interactions (`test/performance.test.ts`, now on the kit's better-sqlite3 rather than node:sqlite).
+All unchanged and enforced by the same code: lists 50 by default and at most 100; selection and bulk changes at most 50 loaded records; imported files 512 KiB and 5,000 rows; chat context at most 20 facts or commitments and 20 interaction references within 16 KiB; AI prompts at most 16,000 characters, marked untrusted, results checked against a strict format with exact passages; list, search and detail under 300 ms at p95 on 10,000 people, 1,000 companies and 100,000 interactions (`pnpm test:perf`, now on the kit's better-sqlite3 rather than node:sqlite, and checked by query plan in `pnpm test`).
 
 ## In an assistant
 
@@ -150,7 +150,8 @@ Every old test file is ported and passes through the kit's adapter, except the p
 
 | Old test | Now |
 | --- | --- |
-| briefing-text, capture, extraction, followups, identity, imports, merge, performance, personal, pipelines, preview, profiles, review-leaks, scopes, sync | Pass. Each call goes through People's kit action as the kit runs it: your browser, a connection with its recorded choice (made with the kit's `createTestConnection`), or the job. Hub calls go to a fake hub that answers with Ri's tool names, `account` argument, choose-account answer and errors as the kit's client reports them. A missing item and `unsupported` go through the kit's own client, as today's Ri or one from before dynamismlabs/ri#7 answers them. |
+| briefing-text, capture, extraction, followups, identity, imports, merge, personal, pipelines, preview, profiles, review-leaks, scopes, sync | Pass. Each call goes through People's kit action as the kit runs it: your browser, a connection with its recorded choice (made with the kit's `createTestConnection`), or the job. Hub calls go to a fake hub that answers with Ri's tool names, `account` argument, choose-account answer and errors as the kit's client reports them. A missing item and `unsupported` go through the kit's own client, as today's Ri or one from before dynamismlabs/ri#7 answers them. |
+| performance | Split in two, so that machine load can't stop a change or an install. `pnpm test` (`test/performance.test.ts`) runs every call the latency budget covers at release volume and checks the query plans. No call may read a whole large table: a scan without an index, an automatic index, or a whole-index walk that doesn't stop at a LIMIT. And how each call reads the large tables, index by index, must match a committed snapshot. Two tests show each check notices a dropped index, and deleting `persons_name` or the participant indexes from People's migrations fails the gate. `pnpm test:perf` (`test/performance.perf.ts`) times the same calls against p95 under 300 ms. It prints the load average and reports "not measured" above one per core. The old record-open plan check matched table names, so it missed aliased scans (`SCAN ip`). The new one reads the aliases. |
 | contract | Rewritten for the kit: every action converted, examples still parse, audiences, MCP tools are exactly the agent actions plus the views and `open_people`, every tool has an output schema, job and connectors in the contract. |
 | release | Passes. Two restores use a database copy, and one uses the kit's portable backup, search included (an expected failure until kit `ff47742`). |
 | view.packaged (Ri packaging, AppEngine, screenshots at widths and dark mode) | Removed with Ri's app engine. Replaced by `test/people.browser.spec.ts` (`pnpm test:host`), which drives the whole view in the kit's strict MCP Apps test host, and `test/kit.test.ts` for the view tools and resource. Width and dark-mode screenshots aren't automated any more (the test host is light only). |
@@ -230,7 +231,7 @@ Core 0.2.2 from kit `main` `df533b0`, from the tarball the kit session packed, v
 - The two latency tests missed 300 ms at p95 (432 and 1952 ms), with the Mac's load average about 200.
 - The duplicate wake-up test crossed into the next five-minute slot, because it started from the clock. It's fixed in `eadb10f`.
 
-The upgrade's commit (`11d713b`: the new tarball, the lockfile and the build skill) was merged by hand. `change --json` then stopped at `checks_failed` on the two latency tests alone (1010 and 998 ms), with the load average 290–510. Every other test passed in the copy. The service still runs `17ac728`.
+The upgrade's commit (`11d713b`: the new tarball, the lockfile and the build skill) was merged by hand. `change --json` then stopped at `checks_failed` on the two latency tests alone (1010 and 998 ms), with the load average 290–510. Every other test passed in the copy. The service still runs `17ac728`. The latency budget has since moved to `pnpm test:perf`, out of the gate ([Tests](#tests)).
 
 On kit `ff47742`: `upgrade --core ~/dynamism/app-builder` stopped at `checks_failed` because the expected-failure backup test passed (K2). Its commit (`9256926`) was merged by hand, the test made a normal one, and `change --json` switched the service. Nothing was reinstalled.
 
@@ -239,6 +240,10 @@ Earlier: the kit's `upgrade --core` moved People from 0.2.0 to core 0.2.2 at kit
 The service definition: through `ff47742` only `serve --install` wrote the launchd plist, so `local.people`, installed with an earlier core, runs without `NODE_ENV=production` (K13). Callers never see stacks either way, which the core enforces.
 
 ## Evidence
+
+November 17, the latency budget out of the gate:
+- `pnpm test:perf` at a load average of 18–20 on 16 cores, with `PERF_MAX_LOAD=2`: every timed call's p95 was at most 30.4 ms (the filtered owner list), and the narrower chat's slowest was 29.5 ms. At the default limit the same machine reported "not measured" at 16.7. The 432–1952 ms failures in the gate were the machine, at load averages of 200–510.
+- `test/performance.test.ts` passed three runs in a row with the same plan snapshot. With `persons_name` replaced in People's migrations, the snapshot test and its self-check failed. With both participant indexes replaced, the full-scan check, the snapshot and the record-open check failed (`SCAN interaction_participants`).
 
 November 17, kit `df533b0`:
 - `pnpm typecheck` passes. `pnpm test` passes 129 of 131 tests in 18 files. The two failures are the latency tests (587 and 1126 ms at p95), with the load average 170–290.
