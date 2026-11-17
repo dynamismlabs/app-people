@@ -12,15 +12,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod/v3";
 import { AppError, type AppInvocation } from "./contract.js";
 
-/** The subset of `node:sqlite`'s DatabaseSync these helpers use. */
+/** The statements these helpers run, and the transaction they run them in (People's `Db`, on the core's `transaction()`). */
 export interface SqlDatabase {
-  exec(sql: string): void;
   prepare(sql: string): {
     run(...params: SqlValue[]): { changes: number | bigint; lastInsertRowid: number | bigint };
     get(...params: SqlValue[]): Record<string, unknown> | undefined;
     all(...params: SqlValue[]): Record<string, unknown>[];
   };
-  readonly isTransaction: boolean;
+  /** Run `work` in one immediate transaction, or join the caller's. */
+  transaction<T>(work: () => T): T;
 }
 export type SqlValue = string | number | bigint | null | Uint8Array;
 
@@ -28,20 +28,6 @@ export const nowIso = () => new Date().toISOString();
 export const newId = () => randomUUID();
 export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-/** Run `work` in one immediate transaction, or join the caller's. */
-export function transaction<T>(db: SqlDatabase, work: () => T): T {
-  if (db.isTransaction) return work();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const result = work();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    if (db.isTransaction) db.exec("ROLLBACK");
-    throw error;
-  }
 }
 
 // ─── Lists ───────────────────────────────────────────────────────────────────
@@ -212,7 +198,7 @@ export function createJobQueue(db: SqlDatabase, options: { now?: () => Date } = 
       return due.find((job) => job.kind !== lastKind) ?? due[0];
     },
     claim(id: string): JobRecord {
-      return transaction(db, () => {
+      return db.transaction(() => {
         const job = get(id);
         if (!job || job.state !== "pending") throw new AppError("conflict", "This background step is no longer pending");
         const time = stamp();

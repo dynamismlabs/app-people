@@ -12,7 +12,7 @@
 import { z } from "zod/v3";
 import { AppError } from "./contract.js";
 import type { AppInvocation } from "./contract.js";
-import { nowIso, sha256, transaction, type SqlDatabase } from "./data.js";
+import { nowIso, sha256, type SqlDatabase } from "./data.js";
 
 type Capable = Pick<AppInvocation, "capability" | "signal">;
 
@@ -753,7 +753,7 @@ export function createMailIndex(db: SqlDatabase) {
       return result;
     },
     forget(account: string) {
-      transaction(db, () => db.prepare("DELETE FROM app_mail_messages WHERE account = ?").run(account));
+      db.transaction(() => db.prepare("DELETE FROM app_mail_messages WHERE account = ?").run(account));
     },
   };
 }

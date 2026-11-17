@@ -177,7 +177,7 @@ function tablesOf(sql: string) {
 
 /** How a statement reads the large tables: one line per step, with its table's real name, and whether it then sorts. */
 function readsOf(world: World, statement: Traced[number]) {
-  const plan = (world.ctx.db.raw.prepare(`EXPLAIN QUERY PLAN ${statement.sql}`).all(...statement.params as never[]) as { detail: string }[]).map((step) => step.detail);
+  const plan = world.ctx.db.all<{ detail: string }>(`EXPLAIN QUERY PLAN ${statement.sql}`, ...statement.params as never[]).map((step) => step.detail);
   const tables = tablesOf(statement.sql);
   const sorts = plan.some((step) => /^USE TEMP B-TREE FOR (ORDER|GROUP) BY/.test(step));
   const steps = plan.flatMap((step) => {
@@ -215,12 +215,18 @@ export function largeTableReads(world: World, statements: Traced): string[] {
   return [...lines].sort();
 }
 
-/** Plan statements as if these indexes were gone. The schema change is rolled back. */
+/** Plan statements as if these indexes were gone. The schema change is rolled back: the transaction ends by throwing. */
 export function withoutIndexes<T>(world: World, indexes: string[], work: () => T): T {
-  const raw = world.ctx.db.raw;
-  raw.exec('BEGIN');
-  try { for (const index of indexes) raw.exec(`DROP INDEX ${index}`); return work(); }
-  finally { raw.exec('ROLLBACK'); }
+  const undo = new Error('Roll back the dropped indexes');
+  let result: T;
+  try {
+    world.ctx.db.tx(() => {
+      for (const index of indexes) world.ctx.db.run(`DROP INDEX ${index}`);
+      result = work();
+      throw undo;
+    });
+  } catch (error) { if (error !== undo) throw error; }
+  return result!;
 }
 
 /** Time a call: one warm-up, then `runs` timed calls. */

@@ -12,13 +12,11 @@
  *   to the sources the person chose for it on the kit's consent screen.
  * - The kit's job runner is the job, limited to the accounts Ri lends People.
  *
- * People's domain code is synchronous SQL in transactions. The kit gives apps
- * only an async driver without interactive transactions (and D1 has none), so
- * People opens its own synchronous better-sqlite3 connection to the kit's
- * data.sqlite, in the same process, after the kit has migrated it. That makes
- * People a Node-only app (no Cloudflare). See docs/parity.md.
+ * People's domain code is synchronous SQL in transactions that read their own
+ * writes. It runs them on the kit's own connection with the core's
+ * `transaction()`, which Cloudflare's D1 can't run yet, so People declares
+ * `platforms: ["node"]` (app.config.ts). See docs/parity.md.
  */
-import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod/v3';
 import { ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, installationOwner, type Context as KitContext, type Platform } from '@app-builder/core';
@@ -36,20 +34,20 @@ let current: Ctx | null = null;
 const contexts = new WeakMap<Platform, Promise<Ctx>>();
 
 /**
- * People's context over a synchronous connection to the kit's database. The
- * kit has already applied People's migrations (src/people/domain/migrations.ts).
+ * People's context on the kit's database, through the core's `transaction()`
+ * on the installation's own connection. The kit has already applied People's
+ * migrations (src/people/domain/migrations.ts) and owns the connection, its
+ * pragmas and its closing.
  */
-export function openContext(boot: { connection: Database.Database; instanceId: string; ownsConnection?: boolean }, options: { now?: () => Date } = {}): Ctx {
-  const raw = boot.connection;
-  raw.pragma('busy_timeout = 5000');
-  raw.pragma('synchronous = NORMAL');
+export function openContext(boot: { platform: Platform; instanceId: string }, options: { now?: () => Date } = {}): Ctx {
+  if (!boot.platform.transaction) throw new AppError('unsupported', 'People runs only on the Mac (Node) target. Its records need a SQLite file.');
   let ctx: Ctx;
   const mutate = createMutate(() => ctx);
   ctx = createContext({
-    raw,
+    platform: boot.platform,
     mutate,
     scopes: (db) => createScopes(db),
-    close: () => { if (boot.ownsConnection) raw.close(); },
+    close: () => {},
     instanceId: boot.instanceId,
     now: options.now,
   });
@@ -66,12 +64,8 @@ export function contextFor(platform: Platform): Promise<Ctx> {
   let opened = contexts.get(platform);
   if (!opened) {
     opened = (async () => {
-      const files = await platform.driver.query({ sql: 'PRAGMA database_list', params: [], method: 'all' });
-      const main = (files.rows as unknown[][]).find((row) => row[1] === 'main');
-      const file = main ? String(main[2]) : '';
-      if (!file) throw new AppError('unsupported', 'People runs only on the Mac (Node) target. Its records need a SQLite file.');
       const instance = await platform.driver.query({ sql: 'SELECT instance_id FROM installation WHERE id = 1', params: [], method: 'get' });
-      return openContext({ connection: new Database(file), instanceId: String((instance.rows as unknown[])[0] ?? 'people'), ownsConnection: true });
+      return openContext({ platform, instanceId: String((instance.rows as unknown[])[0] ?? 'people') });
     })();
     opened.catch(() => contexts.delete(platform));
     contexts.set(platform, opened);

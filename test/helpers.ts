@@ -40,7 +40,7 @@ export async function setup(options: { now?: string; realTime?: boolean } = {}):
 }
 async function open(dataDir: string, now?: () => Date): Promise<Ctx> {
   const opened = await openNodePlatform(application, { dataDir, baseURL: 'http://127.0.0.1:4364', secret: 'test-secret-'.padEnd(64, 'x') });
-  const ctx = openContext({ connection: opened.connection, instanceId: INSTANCE }, { now });
+  const ctx = openContext({ platform: opened.platform, instanceId: INSTANCE }, { now });
   bindContext(opened.platform, ctx);
   state.platform = opened.platform;
   state.close = opened.close;
@@ -59,7 +59,8 @@ export async function restart(now: () => Date = () => new Date()): Promise<Ctx> 
  */
 export async function restoreDatabaseCopy(now: () => Date = () => new Date()): Promise<Ctx> {
   const target = tempDir('people-copy-');
-  peopleContext().db.exec(`VACUUM INTO '${path.join(target, 'data.sqlite').replaceAll("'", "''")}'`);
+  // VACUUM can't run inside a transaction, so this goes through the kit's own driver.
+  await state.platform!.driver.query({ sql: `VACUUM INTO '${path.join(target, 'data.sqlite').replaceAll("'", "''")}'`, params: [], method: 'run' });
   state.close?.();
   return open(target, now);
 }

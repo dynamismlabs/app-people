@@ -1,5 +1,5 @@
-import type BetterSqlite3 from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
+import { transaction, type Platform, type Transaction } from '@app-builder/core';
 import type { AppInvocation } from '../../lib/contract.js';
 import {
   createBlobStore, createJobQueue, createSettings,
@@ -10,72 +10,68 @@ import { createAccountStore, createMailIndex, type AccountStore, type MailIndex 
 export type Param = string | number | bigint | null | Uint8Array;
 export type Row = Record<string, unknown>;
 
-type Statement = BetterSqlite3.Statement;
+type Statement = ReturnType<Transaction['prepare']>;
 /**
- * A thin statement cache over the app's SQLite file. In Ri this was node:sqlite;
- * on App Builder it is better-sqlite3, the same SQLite library the kit uses,
- * on People's own connection to the kit's data.sqlite (see src/people/runtime.ts).
- * Booleans become 0/1 and Uint8Arrays become Buffers before binding.
+ * People's synchronous SQL, on the kit's own connection to its data.sqlite
+ * through the core's `transaction()`. In Ri this was node:sqlite; on App
+ * Builder People first opened a second better-sqlite3 connection of its own,
+ * which the core's transactions replace.
+ *
+ * Every statement runs inside a transaction: `tx(work)` opens one (BEGIN
+ * IMMEDIATE, then COMMIT, or ROLLBACK when `work` throws) or joins the one
+ * already open, without a savepoint. A statement outside any `tx` is its own
+ * transaction, as it was its own implicit one before. Statements are
+ * prepared once per transaction. Booleans become 0/1 and Uint8Arrays become
+ * Buffers before binding.
  */
 export class Db {
-  private readonly cache = new Map<string, Statement>();
+  /** The transaction open on the connection, and the statements prepared in it. */
+  private open: { tx: Transaction; statements: Map<string, Statement> } | null = null;
   /** When set, read statements are recorded so tests can check their query plans. */
   trace: { sql: string; params: Param[] }[] | null = null;
-  constructor(readonly raw: BetterSqlite3.Database) {}
-  statement(sql: string): Statement {
-    let statement = this.cache.get(sql);
+  constructor(private readonly platform: Platform) {}
+  private statement(sql: string): Statement {
+    const open = this.open!;
+    let statement = open.statements.get(sql);
     if (!statement) {
-      if (this.cache.size > 1500) this.cache.clear();
-      statement = this.raw.prepare(sql);
-      this.cache.set(sql, statement);
+      statement = open.tx.prepare(sql);
+      open.statements.set(sql, statement);
     }
     return statement;
   }
   all<T = Row>(sql: string, ...params: Param[]): T[] {
     this.trace?.push({ sql, params });
-    return this.statement(sql).all(...bind(params)) as T[];
+    return this.tx(() => this.statement(sql).all(...bind(params)) as T[]);
   }
   get<T = Row>(sql: string, ...params: Param[]): T | undefined {
     this.trace?.push({ sql, params });
-    return this.statement(sql).get(...bind(params)) as T | undefined;
+    return this.tx(() => this.statement(sql).get(...bind(params)) as T | undefined);
   }
   run(sql: string, ...params: Param[]) {
-    return this.statement(sql).run(...bind(params));
-  }
-  exec(sql: string) {
-    this.raw.exec(sql);
+    return this.tx(() => this.statement(sql).run(...bind(params)));
   }
   /** The statement interface the stores in src/lib expect (node:sqlite's shape in Ri). */
   asSql(): SqlDatabase {
     const db = this;
     return {
-      exec: (sql) => db.raw.exec(sql),
-      prepare: (sql) => {
-        const statement = db.statement(sql);
-        return {
-          run: (...params) => statement.run(...bind(params as Param[])),
-          get: (...params) => statement.get(...bind(params as Param[])) as Record<string, unknown> | undefined,
-          all: (...params) => statement.all(...bind(params as Param[])) as Record<string, unknown>[],
-        };
-      },
-      get isTransaction() { return db.raw.inTransaction; },
+      prepare: (sql) => ({
+        run: (...params) => db.run(sql, ...params),
+        get: (...params) => db.tx(() => db.statement(sql).get(...bind(params))),
+        all: (...params) => db.tx(() => db.statement(sql).all(...bind(params))),
+      }),
+      transaction: (work) => db.tx(work),
     };
   }
   get isTransaction() {
-    return this.raw.inTransaction;
+    return this.open !== null;
   }
   /** Join an open transaction or run one. The work is synchronous: nothing awaits while it holds the write lock. */
   tx<T>(work: () => T): T {
-    if (this.raw.inTransaction) return work();
-    this.raw.exec('BEGIN IMMEDIATE');
-    try {
-      const result = work();
-      this.raw.exec('COMMIT');
-      return result;
-    } catch (error) {
-      if (this.raw.inTransaction) this.raw.exec('ROLLBACK');
-      throw error;
-    }
+    if (this.open) return work();
+    return transaction({ platform: this.platform }, (tx) => {
+      this.open = { tx, statements: new Map() };
+      try { return work(); } finally { this.open = null; }
+    });
   }
 }
 
@@ -111,14 +107,14 @@ export interface Ctx {
 }
 
 export function createContext(options: {
-  raw: BetterSqlite3.Database;
+  platform: Platform;
   mutate: Ctx['mutate'];
   scopes: (db: Db) => ScopeResolver;
   close: () => void;
   instanceId: string;
   now?: () => Date;
 }): Ctx {
-  const db = new Db(options.raw);
+  const db = new Db(options.platform);
   const now = options.now ?? (() => new Date());
   const kitDb = db.asSql();
   return {
