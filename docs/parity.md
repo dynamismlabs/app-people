@@ -163,6 +163,7 @@ Every old test file is ported and passes through the kit's adapter, except the p
 - **K3. The capability shapes are too thin for People, and the fixture source can't stand in for pass-through tools.** `MailMessage` has no list or reply headers; `CalendarEvent` has no attendees, organizer, recurrence or time zones; neither has an incremental cursor. People passes Ri's tools through by name. The fixture source answers a pass-through tool with one fixed result whatever the arguments, so People's mail and calendar sync can't run under `APP_CONNECTORS=fixtures` (the job leaves the account waiting with the reason). People's tests use their own fake hub with Ri's tool shapes. Adding headers and attendees to the capability shapes, or letting fixtures answer by arguments, would close this.
 - **K10. No MCP prompts**, so apps can't offer skills-like workflows.
 - **K12. The kit's test host misses clicks at the bottom of a full-screen frame.** In `browser-host.ts` with Chrome, a real mouse click about 80 px from the bottom of a sandboxed frame made full screen doesn't reach the frame at all (no pointer events inside it), while clicks above it do. People's test dispatches its one click there. Worth checking whether real Chromium hosts (Ri's desktop app) behave the same.
+- **K13. `change` and `upgrade` don't refresh the service definition.** Since `ff47742` the kit's launchd plist sets `NODE_ENV=production`, but only `serve --install` writes it, so `local.people`, installed with the earlier core, runs without it after switching (see [Kit version](#kit-version)).
 - **The test host isn't in the core package.** `packages/core/test/browser-host.ts` and the OAuth helper are copied into `test/host/`; shipping them (or a `testHost()` export) would keep apps' host tests in step with the kit's.
 
 Closed by kit `main` `ff47742` (core 0.2.2, dynamismlabs/mcp-app-builder#10), each shown by a People test:
@@ -221,9 +222,19 @@ Small things seen, not fixed: Open in browser at the top right is hard to read i
 
 ## Kit version
 
-Core 0.2.2 from kit `main` `1713f6a`, vendored in `vendor/`. The kit's own `upgrade --core ~/dynamism/app-builder --json` moved People from 0.2.0 (run from the kit checkout's CLI, since 0.2.0 predates `upgrade`): core, prepare (new tarball, lockfile, build skill, migrations core-0007 to core-0009), typecheck and test in a separate worktree, then a fast-forward merge. People isn't installed as a service, so nothing switched. Because People isn't installed, the kit wrote that upgrade's log under the default data directory (`~/.local/share/people/releases/`), which holds nothing else.
+Core 0.2.2 from kit `main` `ff47742`, vendored in `vendor/`. `pnpm exec app-builder upgrade --core ~/dynamism/app-builder --json`, run on the installed `local.people`, stopped at `checks_failed`: the only failure was the expected-failure backup test, which now passed (K2). Its commit (`9256926`: the new tarball, the lockfile and the build skill) was merged by hand, the test made a normal one, and `change --json` then switched the service. Nothing was reinstalled.
+
+Earlier: the kit's `upgrade --core` moved People from 0.2.0 to core 0.2.2 at kit `1713f6a` (run from the kit checkout's CLI, since 0.2.0 predates `upgrade`), before People was installed.
+
+Not picked up by `change`: the kit now runs services with `NODE_ENV=production`, but only `serve --install` writes the launchd plist, so `local.people` (installed with the earlier core) still runs without it. Callers still never see stacks, which the core enforces either way. A kit gap: `change` and `upgrade` could refresh the service definition, or `status` could say it's out of date.
 
 ## Evidence
+
+November 17, kit `ff47742`:
+- `pnpm typecheck` passes, and `pnpm test` passes 18 files and 128 tests, with no expected failures left.
+- The upgrade's own check failed only on the pinned backup test passing. After the merge, `change --json` passed resolve, copy, install, typecheck, test (128 passed), build, rehearse, stop, snapshot and switch: `local.people` runs release `3e3ba43` on core 0.2.2 at `http://127.0.0.1:4311`, `/api/health` answers with it, and `/mcp` without a token answers 401.
+- Removing People's own deleted-source filter was checked against the tests: with the kit's sign-in skipped in the test helper, the replay test after a deleted import fails, and with it, it passes.
+- `pnpm test:host` wasn't rerun: no view code changed.
 
 November 16, installed and checked in Ri:
 - Installed as this Mac's service: `PORT=4311 APP_HOST=127.0.0.1 APP_URL=http://127.0.0.1:4311 pnpm exec app-builder serve --install HEAD --json` passed every step (launchd, `local.people`, data in `~/.local/share/people`). Then `change HEAD --json` switched it to 5ff66bd, the `sourceAccount` fix. `status --json` reports it running on core 0.2.2.
