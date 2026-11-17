@@ -21,7 +21,7 @@
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod/v3';
-import { ApprovalPending, SetupRequired, SourceUnavailable, connectors, installationOwner, type Context as KitContext, type Platform } from '@app-builder/core';
+import { ApprovalPending, ConnectorError, SetupRequired, SourceUnavailable, connectors, installationOwner, type Context as KitContext, type Platform } from '@app-builder/core';
 import { AppError, type AccountGrant, type AppInvocation, type AppPrincipal } from '../lib/contract.js';
 import { accountSource, actorOf, scopeFingerprint, sha256, type AccessScope, type Operation } from '../lib/data.js';
 import { FIXTURE_ACCOUNTS } from './fixtures/seed.js';
@@ -297,8 +297,17 @@ function toAppError(error: unknown): unknown {
   if (error instanceof SourceUnavailable) return new AppError('busy', error.message);
   if (error instanceof ApprovalPending) return new AppError('approval_required', error.message);
   const message = error instanceof Error ? error.message : String(error);
-  // The kit's client keeps only the hub's message for a failed call, not its code.
-  if (/not.?found|404|410|expired|no longer (available|exists)|gone/i.test(message)) return new AppError('not_found', message.slice(0, 300));
+  // Gone at the provider, or a Ri record that no longer exists. Since dynamismlabs/ri#7 Ri names a
+  // Gmail or Calendar 404 or 410 `not_found` and keeps the status, whatever the message says.
+  if (error instanceof ConnectorError && error.code === 'not_found') return new AppError('not_found', message.slice(0, 300), error.httpStatus);
+  // Ri's own services say `unsupported` by code, such as its model service without the Claude harness.
+  if (error instanceof ConnectorError && error.code === 'unsupported') return new AppError('unsupported', message.slice(0, 300));
+  // A hub from before ri#7 sends a provider's 404 or 410 as `provider_error`, with the status only
+  // in the message ("provider error 410 for GET …"). Only there is the wording read.
+  if (error instanceof ConnectorError && error.code === 'provider_error' && /not.?found|404|410|expired|no longer (available|exists)|gone/i.test(message)) {
+    const status = /\b(404|410)\b/.exec(message)?.[1];
+    return new AppError('not_found', message.slice(0, 300), status ? Number(status) : undefined);
+  }
   if (/unsupported|not supported|unavailable here/i.test(message)) return new AppError('unsupported', message.slice(0, 300));
   return new AppError('app_failed', message.slice(0, 300));
 }

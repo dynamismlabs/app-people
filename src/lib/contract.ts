@@ -14,7 +14,12 @@ export type AppErrorCode =
   | "busy" | "timeout" | "approval_required" | "approval_denied" | "interrupted" | "app_failed";
 
 export class AppError extends Error {
-  constructor(public readonly code: AppErrorCode, message: string) {
+  /**
+   * `httpStatus` is the provider's own status, when a connected service's
+   * `not_found` named one: 404 for an item that no longer exists, 410 for one
+   * that's gone, such as an expired Calendar sync token.
+   */
+  constructor(public readonly code: AppErrorCode, message: string, public readonly httpStatus?: number) {
     super(message);
     this.name = "AppError";
   }

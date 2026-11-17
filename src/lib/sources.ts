@@ -592,7 +592,7 @@ export interface CalendarStepResult { checkpoint: CalendarCheckpoint; more: bool
  * One bounded Calendar page. The full scan covers the window, then the sync
  * token returns only changes. A cancelled event is reported, not dropped, so
  * the app can keep its history. An expired token (410) restarts the window.
- * When half the future window has passed, a fresh full scan moves it forward.
+ * A missing calendar (404) fails the step and keeps the token. When half the future window has passed, a fresh full scan moves it forward.
  */
 export async function calendarSyncStep(options: {
   invocation: Capable;
@@ -615,7 +615,9 @@ export async function calendarSyncStep(options: {
   try {
     page = syncPage.parse(await options.invocation.capability("google_calendar.sync_events", input, { binding: options.binding, account: options.account }));
   } catch (error) {
-    if ((error as AppError)?.code === "not_found" && checkpoint.phase === "incremental") {
+    // An expired sync token is a 410. A 404 is the calendar itself missing: a fresh scan wouldn't
+    // find it either, so the token is kept for when it's back. A hub that names no status restarts.
+    if ((error as AppError)?.code === "not_found" && (error as AppError).httpStatus !== 404 && checkpoint.phase === "incremental") {
       const fresh = newCalendarCheckpoint(checkpoint.calendarId, checkpoint.pastDays, checkpoint.futureDays, now());
       return { checkpoint: { ...fresh, resets: checkpoint.resets + 1, lastSuccessAt: checkpoint.lastSuccessAt, timeZone: checkpoint.timeZone }, more: true, events: 0, cancelled: 0 };
     }

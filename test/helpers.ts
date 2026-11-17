@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { createApp, SetupRequired, SourceUnavailable, type Connection, type Context, type ConnectorSource, type Platform } from '@app-builder/core';
+import { createApp, fixtureSource, SetupRequired, SourceUnavailable, type Connection, type Context, type ConnectorSource, type Platform } from '@app-builder/core';
 import { backupNode, createTestConnection, openNodePlatform, restoreNode } from '@app-builder/core/node';
 import { AppError, type AppPrincipal } from '../src/lib/contract.js';
 import { application } from '../src/app.js';
@@ -79,6 +79,7 @@ export function teardown(ctx: Ctx | null) {
   state.close?.();
   state.platform = null;
   state.close = null;
+  hub.beforeRi7 = false;
   delete process.env.PEOPLE_PREVIEW;
   cleanup();
 }
@@ -151,12 +152,29 @@ export function hubSource(capability: Capability, accounts: Grant[]): ConnectorS
         const message = (error as Error).message;
         if (code === 'revoked' || code === 'forbidden') throw new SetupRequired(code === 'forbidden' ? `Not allowed: ${message}` : message);
         if (code === 'busy' || code === 'timeout') throw new SourceUnavailable(message);
-        if (code === 'not_found') throw new Error(`not_found: ${message}`);
-        if (code === 'unsupported') throw new Error(`unsupported: ${message}`);
+        if (code === 'not_found') return await riNotFound(tool, args, error as AppError);
+        // Ri's own services answer `unsupported` by code, as the kit's client reads it.
+        if (code === 'unsupported') return await fixtureSource({ tools: { [tool]: { error: { code, message } } } }).callTool(tool, args);
         throw error;
       }
     },
   };
+}
+
+/** Which Ri the fake hub answers as. Reset after each test. */
+export const hub = { beforeRi7: false };
+/**
+ * Ri's answer when what was asked for isn't there, read by the kit's own client. Since
+ * dynamismlabs/ri#7 a provider's 404 or 410 is `not_found` with its status. A hub from before it
+ * sent `provider_error`, with the status only in the message. Ri's own records were `not_found`
+ * throughout, without a status.
+ */
+function riNotFound(tool: string, args: Record<string, unknown>, error: AppError) {
+  const status = error.httpStatus;
+  const answer = !status ? { code: 'not_found', message: error.message }
+    : hub.beforeRi7 ? { code: 'provider_error', message: `provider error ${status} for GET ${tool}` }
+    : { code: 'not_found', httpStatus: status, message: `provider error ${status} for GET ${tool}` };
+  return fixtureSource({ tools: { [tool]: { error: answer } } }).callTool(tool, args);
 }
 
 /** What the hub lends People for this call, as the job's last check found it. */

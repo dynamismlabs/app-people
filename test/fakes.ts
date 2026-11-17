@@ -5,6 +5,8 @@ import { calendarEvent, gmailMetadata, gmailRaw, type FakeEvent, type FakeMail }
  * Fictional connector and Ri capabilities with the shapes the host returns.
  * Mailboxes page their search results, report history changes, can expire a
  * history checkpoint and fail a call once to simulate an interrupted page.
+ * A provider's "not found" carries its HTTP status (Gmail 404, Calendar 404
+ * or 410). Ri's own records have none.
  */
 export interface FakeAccount {
   email: string;
@@ -21,11 +23,13 @@ export interface FakeOptions {
   ai?: 'unsupported' | 'forbidden' | ((prompt: string) => string);
   tasks?: Map<string, { id: string; title: string; status: string; deleted?: boolean }>;
   failCreateTaskOnce?: boolean;
+  /** The next Calendar sync with a token fails once: 410 as Google answers an expired token, 404 for a calendar that's missing. */
+  failSyncOnce?: 404 | 410;
 }
 export function fakeHost(accounts: Record<string, FakeAccount>, options: FakeOptions = {}) {
   const calls: { name: string; input: Record<string, unknown>; account?: string }[] = [];
   const tasks = options.tasks ?? new Map();
-  let expired = false, readFailed = false, createFailed = false;
+  let expired = false, readFailed = false, createFailed = false, syncFailed = false;
   const historyCursor = new Map<string, number>();
   const capability = async (name: string, input: unknown, target?: unknown) => {
     const account = (target as { account?: string } | undefined)?.account;
@@ -42,7 +46,7 @@ export function fakeHost(accounts: Record<string, FakeAccount>, options: FakeOpt
         return { messages: slice.map((mail) => ({ id: mail.id, threadId: mail.threadId ?? mail.id })), ...(start + size < box!.mail.length ? { nextPageToken: `p${start + size}` } : {}) };
       }
       case 'gmail.list_history': {
-        if (options.expireHistoryOnce && !expired) { expired = true; throw new AppError('not_found', 'History expired'); }
+        if (options.expireHistoryOnce && !expired) { expired = true; throw new AppError('not_found', 'History expired', 404); }
         // Like Gmail, the same start position always returns the same changes.
         const start = Number(args.startHistoryId ?? 100);
         const index = Math.max(0, Math.round((start - 100) / 20));
@@ -57,18 +61,19 @@ export function fakeHost(accounts: Record<string, FakeAccount>, options: FakeOpt
       }
       case 'gmail.get_message': {
         const mail = box!.mail.find((item) => item.id === args.messageId);
-        if (!mail) throw new AppError('not_found', 'gone');
+        if (!mail) throw new AppError('not_found', 'gone', 404);
         return gmailMetadata(mail);
       }
       case 'gmail.read_message': {
         if (options.failReadOnce === args.messageId && !readFailed) { readFailed = true; throw new AppError('timeout', 'The provider timed out'); }
         const mail = box!.mail.find((item) => item.id === args.messageId);
-        if (!mail) throw new AppError('not_found', 'gone');
+        if (!mail) throw new AppError('not_found', 'gone', 404);
         return gmailRaw(mail);
       }
       case 'google_calendar.list_calendars': return { calendars: [{ id: box!.email, summary: box!.email, primary: true }] };
       case 'google_calendar.sync_events': {
         if (args.syncToken) {
+          if (options.failSyncOnce && !syncFailed) { syncFailed = true; throw new AppError('not_found', options.failSyncOnce === 410 ? 'Sync token is no longer valid' : 'Not Found', options.failSyncOnce); }
           const step = Number(String(args.syncToken).replace('sync-', ''));
           const changes = box!.eventChanges?.[step] ?? [];
           return { events: changes.map(calendarEvent), nextSyncToken: `sync-${step + (changes.length ? 1 : 0)}`, calendarTimeZone: 'America/Denver' };
@@ -89,7 +94,9 @@ export function fakeHost(accounts: Record<string, FakeAccount>, options: FakeOpt
       }
       case 'ai_text': {
         if (!options.ai) throw new AppError('forbidden', 'Not allowed');
-        if (options.ai === 'unsupported' || options.ai === 'forbidden') throw new AppError(options.ai, 'Bounded app AI unavailable');
+        // Ri's words when its model service can't run here.
+        if (options.ai === 'unsupported') throw new AppError('unsupported', "Ri's model service for apps needs the Claude subscription harness");
+        if (options.ai === 'forbidden') throw new AppError('forbidden', 'Bounded app AI unavailable');
         return { text: options.ai(String(args.prompt)) };
       }
     }

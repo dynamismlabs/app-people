@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Ctx } from '../src/people/domain/context.js';
-import { call, job, owner, setup, teardown, chat } from './helpers.js';
+import { call, hub, job, owner, setup, teardown, chat } from './helpers.js';
 import { fakeHost, mail, OWNER, OWNER_WORK, type FakeAccount } from './fakes.js';
 
 let ctx: Ctx | null = null;
@@ -92,7 +92,12 @@ describe('bounded Gmail and Calendar sync', () => {
     expect(failedOnce).toBeGreaterThanOrEqual(2);
   });
 
-  it('restarts a bounded rescan of the history window when the history cursor expires', async () => {
+  // Ri names a provider's 404 or 410 not_found since dynamismlabs/ri#7. A hub from before it sends
+  // provider_error with the status in the message, which People still reads.
+  const HUBS = [['by its code', false], ['by its message, from a hub before ri#7', true]] as const;
+
+  it.each(HUBS)('restarts a bounded rescan of the history window when the history cursor expires, %s', async (_, beforeRi7) => {
+    hub.beforeRi7 = beforeRi7;
     const accounts = world();
     accounts.personal.history = [{ added: [] }];
     const host = fakeHost(accounts, { expireHistoryOnce: true });
@@ -103,6 +108,34 @@ describe('bounded Gmail and Calendar sync', () => {
     expect((account.checkpoint as { rescans: number }).rescans).toBe(1);
     expect(ctx!.db.get<{ count: number }>("SELECT COUNT(*) AS count FROM interactions WHERE source_key = 'account:personal' AND external_id = 'p1'")!.count).toBe(1);
     expect(host.calls.filter((item) => item.name === 'gmail.search_messages').every((item) => /after:\d+/.test(String(item.input.query)))).toBe(true);
+  });
+
+  it.each(HUBS)('restarts a calendar\'s window when its sync token expires (410), and keeps the token when the calendar is missing (404), %s', async (_, beforeRi7) => {
+    hub.beforeRi7 = beforeRi7;
+    const accounts = world();
+    // Only the calendar is lent, so each continue_import runs the calendar step.
+    const calendarOnly = (capability: ReturnType<typeof fakeHost>['capability']) => ({ ...owner([], capability), accounts: [{ account: 'personal', binding: 'calendar' as const }] });
+    const checkpoint = () => (ctx!.accounts.get('personal', 'calendar')!.checkpoint as Record<string, { phase: string; syncToken: string | null; resets: number }>).primary;
+    const step = async (failSyncOnce?: 404 | 410) => {
+      const host = fakeHost(accounts, { failSyncOnce });
+      await call('continue_import', { source: 'account:personal' }, calendarOnly(host.capability));
+      return host;
+    };
+    await drain(job([{ account: 'personal', binding: 'calendar' }], fakeHost(accounts).capability));
+    expect(checkpoint()).toMatchObject({ phase: 'incremental', syncToken: 'sync-0', resets: 0 });
+
+    // A missing calendar: a fresh scan couldn't find it either, so the token waits for it.
+    const missing = await step(404);
+    expect(missing.calls.filter((item) => item.name === 'google_calendar.sync_events').map((item) => item.input.syncToken)).toEqual(['sync-0']);
+    expect(checkpoint()).toMatchObject({ phase: 'incremental', syncToken: 'sync-0', resets: 0 });
+    expect(ctx!.accounts.get('personal', 'calendar')!.status).toBe('error');
+
+    // An expired token: the window starts again from a full scan.
+    await step(410);
+    expect(checkpoint()).toMatchObject({ phase: 'full', syncToken: null, resets: 1 });
+    await step();
+    expect(checkpoint()).toMatchObject({ phase: 'incremental', syncToken: 'sync-0', resets: 1 });
+    expect(ctx!.accounts.get('personal', 'calendar')!.status).toBe('ready');
   });
 
   it('marks a message deleted upstream as unavailable without inventing anything else', async () => {
