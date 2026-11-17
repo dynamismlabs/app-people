@@ -174,6 +174,8 @@ test("Settings inside the host: from the header and from Sources, connections li
     const rows = view.locator(".connection-row");
     await expect(rows.filter({ hasText: "Qualification host (this one)" })).toHaveCount(1);
     await expect(rows.filter({ hasText: "Another assistant" })).toHaveCount(1);
+    // Connecting Ri, which lends People its accounts, and People's job are here too.
+    await expect(view.getByRole("heading", { name: "Your accounts through Ri" })).toBeVisible();
     await expect(view.locator(".job-row").filter({ hasText: "Update from your accounts" })).toHaveCount(1);
     // Another connection goes at once; the view's own asks first.
     await rows.filter({ hasText: "Another assistant" }).getByRole("button", { name: "Disconnect" }).click();
