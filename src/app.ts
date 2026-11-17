@@ -2,7 +2,7 @@ import type { Application } from "@app-builder/core";
 import { appConfig } from "../app.config";
 import { PEOPLE_MIGRATIONS } from "./people/domain/migrations";
 import { HUB_TOOLS } from "./people/runtime";
-import { peopleJobs, peopleKitActions, peopleSources, peopleViews } from "./people/kit";
+import { peopleJobs, peopleKitActions, peopleRecords, peopleSources, peopleViews } from "./people/kit";
 import { exportPeople } from "./people/export";
 
 /**
@@ -14,6 +14,7 @@ export const application: Application = {
   actions: peopleKitActions,
   views: peopleViews,
   sources: peopleSources,
+  records: peopleRecords,
   jobs: peopleJobs,
   connectors: {
     purpose: "to keep track of the people you write to and meet, from your mail and calendar",

@@ -115,7 +115,7 @@ export const job = (accounts: { account: string; binding?: 'mail' | 'calendar' }
 /** Connections made for chats: the kit records each one's choice, as the consent screen does. */
 const connections = new Map<string, { actorId: string; clientId: string; accessToken: string }>();
 /** In Ri the owner made a scope for a chat. On App Builder that is an OAuth connection with the choice from the consent screen. */
-export async function createScope(input: { actorId: string; sources: string[]; operations: ('read' | 'write')[]; label?: string }, _caller?: Caller) {
+export async function createScope(input: { actorId: string; sources: string[] | null; operations: ('read' | 'write')[]; label?: string }, _caller?: Caller) {
   const made = await createTestConnection(state.platform!, { name: input.label ?? input.actorId, sources: input.sources, write: input.operations.includes('write') });
   connections.set(made.clientId, { actorId: input.actorId, ...made });
   return { scopeRef: made.clientId, accessToken: made.accessToken };
@@ -208,7 +208,10 @@ export async function call<T = any>(name: string, input: unknown, caller: Caller
   const action = kitActions.get(name);
   const people = definition.actions.find((item) => item.name === name);
   if (!action || !people) throw new Error(`Unknown action ${name}`);
-  if (!people.audience.includes(caller.audience)) throw new AppError('forbidden', 'This action is unavailable to this caller');
+  // Who may call it is the kit's: the browser (user), any connection (agent), the job (schedule).
+  // View-only actions are agent actions the host keeps from the model; People's own owner check then applies.
+  const allowed = caller.audience === 'schedule' ? people.audience.includes('schedule') : action.audience.includes(caller.audience);
+  if (!allowed) throw new AppError('forbidden', 'This action is unavailable to this caller');
   lend(peopleContext(), caller.accounts);
   state.platform!.connectors = hubSource(caller.capability ?? noCapability, caller.accounts);
   const kit = await withChoice(kitContext(caller));

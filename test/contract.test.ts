@@ -32,14 +32,17 @@ describe('contract', () => {
     for (const name of ['create_scope', 'list_scopes', 'revoke_scope']) expect(names.has(name), name).toBe(false);
   });
 
-  it('keeps source management, merges, navigation and pipeline structure in the browser only, and the steps for the job only', () => {
-    const userOnly = ['list_sources', 'configure_source', 'pause_source', 'delete_source_data', 'set_extraction', 'continue_import', 'preview_import', 'apply_import', 'export_records',
-      'save_navigation', 'save_pipeline', 'save_pipeline_stages', 'merge_people', 'merge_organizations', 'undo_merge', 'resolve_identity', 'apply_company_attribution', 'delete_record', 'save_exclusion'];
+  it('makes source management, merges, navigation and pipeline structure view-only, and the steps job-only', () => {
+    const viewOnly = ['list_sources', 'configure_source', 'pause_source', 'delete_source_data', 'set_extraction', 'continue_import', 'preview_import', 'apply_import', 'export_records',
+      'save_navigation', 'save_pipeline', 'save_pipeline_stages', 'merge_people', 'merge_organizations', 'undo_merge', 'resolve_identity', 'apply_company_attribution', 'delete_record', 'save_exclusion',
+      'list_exclusions', 'save_collection', 'preview_company_attribution', 'open_view', 'get_record_title'];
     const kit = new Map(application.actions.map((action) => [action.name, action]));
-    for (const name of userOnly) {
-      expect(definition.actions.find((action) => action.name === name)!.audience, name).toEqual(['user']);
-      expect(kit.get(name)!.audience, name).toEqual(['user']);
+    for (const name of viewOnly) {
+      // In Ri these were the owner's view only. Now the view can call them in a host, and the host keeps them from the model.
+      expect(kit.get(name)!.audience, name).toEqual(['user', 'agent']);
+      expect(kit.get(name)!.visibility, name).toEqual(['app']);
     }
+    for (const action of application.actions) if (!viewOnly.includes(action.name)) expect(action.visibility, action.name).toBeUndefined();
     for (const name of ['run_background_step', 'sync_step', 'enrich_step', 'update_people']) expect(kit.get(name)!.audience, name).toEqual([]);
     for (const action of definition.actions) {
       if (action.effect === 'read') expect(action.retry, action.name).toBe('read_safe');
@@ -47,15 +50,19 @@ describe('contract', () => {
     }
   });
 
-  it('offers assistants exactly the agent actions, the show_* views and open_people, each with an output schema', () => {
+  it('offers assistants exactly the agent actions, the show_* views, open_people and the @ menu search, each with an output schema', () => {
     const contract = actionContract({ ...application, viewHTML: '<!doctype html>' });
     const tools = contract.mcp.tools as { name: string; title?: string; outputSchema?: unknown }[];
     const names = tools.map((tool) => tool.name).sort();
     const expected = [
       ...application.actions.filter((action) => action.audience.includes('agent')).map((action) => action.name),
-      ...(application.views ?? []).map((view) => view.name), 'open_people',
+      ...(application.views ?? []).map((view) => view.name), 'open_people', 'search_mentions',
     ].sort();
     expect(names).toEqual(expected);
+    const viewOnly = tools.filter((tool) => (tool as { _meta?: { ui?: { visibility?: string[] } } })._meta?.ui?.visibility?.join() === 'app').map((tool) => tool.name).sort();
+    expect(viewOnly).toContain('delete_record');
+    expect(viewOnly).toContain('search_mentions');
+    expect(viewOnly).not.toContain('search_people');
     for (const tool of tools) {
       expect(tool.outputSchema, tool.name).toBeTruthy();
       expect(tool.name, tool.name).not.toMatch(/__|\.\.|\._|_\./);

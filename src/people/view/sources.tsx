@@ -300,7 +300,7 @@ function Collections({ data, reload }: { data: Sources; reload(): void }) {
   return (
     <section className="pe-stack" aria-labelledby="pe-collections-heading">
       <h2 id="pe-collections-heading" className="ri-h2">Collections</h2>
-      <p className="pe-small pe-muted">Your own records live in collections. You can share a collection with a chat separately from your accounts.</p>
+      <p className="pe-small pe-muted">Your own records live in collections. You can let an assistant see a collection separately from your accounts when it connects.</p>
       <div className="pe-row">{data.collections.map((item) => <span key={item.key} className="pe-pill">{item.label}</span>)}</div>
       <div className="pe-row">
         <TextInput hideLabel label="New collection name" placeholder="Such as Work or Family" value={label} onChange={setLabel} />
@@ -334,8 +334,11 @@ function ExportPanel() {
   return (
     <section className="pe-stack" aria-labelledby="pe-export-heading">
       <h2 id="pe-export-heading" className="ri-h2">Export</h2>
-      <p className="pe-small pe-muted">CSV and JSON files with stable IDs and a format version. Message bodies are never exported. This is not a full backup: a whole Ri backup keeps everything, including sources and decisions.</p>
-      <div className="pe-row">{TABLES.map(([table, label]) => <Button key={table} size="sm" busy={busy === table} onClick={() => void run(table)}>{label}</Button>)}</div>
+      <p className="pe-small pe-muted">CSV and JSON files with stable IDs and a format version. Message bodies are never exported. This is not a full backup: People's installation backup keeps everything, including sources and decisions.</p>
+      {app.canDownload
+        ? <div className="pe-row">{TABLES.map(([table, label]) => <Button key={table} size="sm" busy={busy === table} onClick={() => void run(table)}>{label}</Button>)}</div>
+        // A host that can't save files (Ri before it adds ui/download-file): export from the browser instead.
+        : <p className="pe-small">Saving files isn't available here. Use Open in browser to export.</p>}
       {error && <InlineError>{error}</InlineError>}
     </section>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Avatar, Button, ButtonRow, Checkbox, DataTable, Dialog, EmptyState, InlineError, Menu, SearchField, Select, SplitView, TextInput, useAnnounce, useQuery,
-  type DataColumn, type DataTableSort,
+  type DataColumn, type DataTableSort, useRiApp,
 } from './kit/index.js';
 import type { Coverage, OrganizationSummary, PeopleFilters, PersonSummary, SavedView } from '../schemas.js';
 import { coverageLines, dateLabel, dayLabel, isOverdue, meetingLabel } from './format.js';
@@ -57,6 +57,11 @@ export function Directory({ kind }: { kind: Kind }) {
   const noun = kind === 'person' ? 'people' : 'companies';
   const bulk = useSave<{ results: { id: string; status: string; message: string | null }[]; saved: number }>('bulk_update_records');
   const navigation = useSave<unknown>('save_navigation');
+
+  // Records chosen for a bulk change reach the assistant with their names, as the kit's wider selection.
+  const host = useRiApp();
+  useEffect(() => { host.selectRecords(rows.filter((row) => selected.includes(row.id)).map((row) => ({ id: row.id, title: row.name })), selected.length); }, [selected.join(',')]);
+  useEffect(() => () => host.selectRecords([]), []);
 
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length >= 50 ? current : [...current, id]);
   const table: DataColumn<PersonSummary & OrganizationSummary>[] = [

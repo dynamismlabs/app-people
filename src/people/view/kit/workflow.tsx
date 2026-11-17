@@ -5,7 +5,7 @@
  * applies or invites. Follow-ups create one Ri task only after confirmation.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { useOptionalRiApp } from "./app.js";
+import { AskInChat } from "@app-builder/core/react";
 import { useAnnounce } from "./announce.js";
 import { Button, ButtonRow, type ButtonSize, type ButtonVariant } from "./button.js";
 import { Dialog } from "./dialog.js";
@@ -13,7 +13,7 @@ import { InlineError, StatusLabel } from "./feedback.js";
 import { Checkbox, DateInput, TextInput } from "./forms.js";
 import { formatDate } from "./format.js";
 import { WarningIcon } from "./icons.js";
-import { errorMessage, isLocalDateString } from "./util.js";
+import { cx, errorMessage, isLocalDateString } from "./util.js";
 
 export interface AskRiButtonProps {
   /** Editable text staged in Ri's chat composer. Never sent automatically. */
@@ -23,44 +23,14 @@ export interface AskRiButtonProps {
   size?: ButtonSize;
   className?: string;
 }
-/** Stages a question in Ri's native chat. The person edits and sends it. */
+/**
+ * Puts a question in the host's chat for the person to edit and send: the
+ * kit's AskInChat, which drafts in a host that drafts (Ri), shows the question
+ * to copy in one that can't, and shows nothing in the browser, where there's
+ * no chat. Nothing is sent for the person.
+ */
 export function AskRiButton({ prompt, children = "Ask Ri", variant = "secondary", size, className }: AskRiButtonProps) {
-  const app = useOptionalRiApp();
-  const announce = useAnnounce();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // App Builder's view client can't stage a chat draft (docs/parity.md), so there is no button.
-  if (!app?.canAsk) return null;
-  return (
-    <span className="ri-ask">
-      <Button
-        variant={variant}
-        size={size}
-        className={className}
-        busy={busy}
-        busyLabel="Opening chat"
-        onClick={async () => {
-          if (!app) {
-            setError("Chat is not available here");
-            return;
-          }
-          setBusy(true);
-          setError(null);
-          try {
-            await app.ask(prompt);
-            announce("Question added to Ri chat. Review it, then send.", { visual: false });
-          } catch (failure) {
-            setError(errorMessage(failure, "Ri chat could not open"));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {children}
-      </Button>
-      {error && <InlineError>{error}</InlineError>}
-    </span>
-  );
+  return <span className="ri-ask"><AskInChat question={prompt} className={cx("ri-button", `ri-button--${variant}`, size && size !== "md" && `ri-button--${size}`, className)}>{children}</AskInChat></span>;
 }
 
 export interface CreatedFollowUp { title: string; dueAt?: string | null }

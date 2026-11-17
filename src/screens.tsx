@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Routes, Route } from "react-router";
-import { useAppClient, ConnectionSettings, ConsentScreen, ViewCard } from "@app-builder/core/react";
+import { useAppClient, ConnectionSettings, ConsentScreen, OpenInBrowser, ViewCard } from "@app-builder/core/react";
 import { AppFrame, RiAppProvider, installStyles } from "./people/view/kit/index.js";
 import { PeopleApp } from "./people/view/app.js";
 import { peopleCss } from "./people/view/styles.js";
@@ -9,20 +9,18 @@ import { dateLabel, dayLabel, meetingLabel } from "./people/view/format.js";
 // People's screens are the ones it had in Ri (src/people/view), on the kit's client.
 if (typeof document !== "undefined") installStyles(peopleCss);
 
-/** A card asks for the whole app at a place (a person, Follow-ups): the same frame goes full screen and opens there. */
-let pendingPath: string | undefined;
+/** A card opens the whole app at one record: full screen, at its path (the kit's openFullscreen). */
 function openInApp(client: ReturnType<typeof useAppClient>, path: string) {
-  pendingPath = path;
-  void client.openFullscreen().catch(() => {});
+  void client.openFullscreen(path).catch(() => {});
 }
 
 export function PeopleScreen() {
   const client = useAppClient();
-  const [start] = useState(() => { const path = pendingPath; pendingPath = undefined; return path; });
   useEffect(() => { installStyles(peopleCss); }, []);
   return <>
-    {!client.embedded && <nav className="people-top" aria-label="App"><a href="/settings">Settings</a></nav>}
-    <RiAppProvider initialPath={start}><AppFrame><PeopleApp /></AppFrame></RiAppProvider>
+    {/* In the browser, Settings. Inside a host, the way out: Open in browser, at the place the person is in. */}
+    <nav className="people-top" aria-label="App">{client.embedded ? <OpenInBrowser /> : <a href="/settings">Settings</a>}</nav>
+    <RiAppProvider><AppFrame><PeopleApp /></AppFrame></RiAppProvider>
   </>;
 }
 

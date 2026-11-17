@@ -5,9 +5,9 @@
  * kit's client (`useAppClient` from @app-builder/core/react), which calls the
  * app's actions over HTTP in the app's own web page and as MCP tool calls
  * inside an assistant (MCP Apps). The `RiApp` interface the screens use is
- * unchanged, so the screens are the same code. What the kit's client can't do
- * inside an assistant (stage a chat draft, open a link, download a file) is
- * reported as unavailable there; see docs/parity.md.
+ * unchanged, so the screens are the same code. Leaving the frame goes through
+ * the host: a question drafted in the chat, a link, a saved file and Open in
+ * browser each use the kit's call, which checks what the host allows.
  */
 import { createContext, useCallback, useContext, useEffect, useInsertionEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAppClient } from "@app-builder/core/react";
@@ -36,11 +36,15 @@ export interface RiApp<TData = unknown> {
   error: string | null;
   /** Inside an assistant (MCP Apps) rather than the app's own page. */
   embedded: boolean;
-  /** Whether a chat composer is available to stage a question. Never on App Builder today. */
+  /** The host drafts a question in its chat for the person to send (Ri does). */
   canAsk: boolean;
+  /** Files can be saved here: in the browser, or a host with `ui/download-file`. */
+  canDownload: boolean;
   call<T = unknown>(action: string, input?: Record<string, unknown>, options?: { invocationId?: string }): Promise<T>;
-  /** What the person is looking at. Only one selected record's id and title reach the assistant (the kit's bounded selection). */
+  /** Where the person is: the section, its filters and the open record, for the assistant. */
   context(state: unknown): void;
+  /** Several records the person selected for a bulk change (at most 50 listed), or none. */
+  selectRecords(records: { id: string; title: string }[], total?: number): void;
   ask(prompt: string): Promise<void>;
   openSources(): Promise<void>;
   manageAccess(): Promise<void>;
@@ -65,13 +69,26 @@ export function useRiApp<TData = unknown>(): RiApp<TData> {
 export function useOptionalRiApp<TData = unknown>(): RiApp<TData> | null {
   return useContext(RiAppContext) as RiApp<TData> | null;
 }
-/** Move the view when the person goes Back or Forward. `onMove` receives the `open_view` result for the new place. */
+/** Move the view when the person goes Back or Forward, or the host opens another place. `onMove` receives the `open_view` result for it. */
 export function useLocationMoves<TData = unknown>(onMove: (data: TData) => void) {
   const follow = useContext(FollowContext);
   if (!follow) throw new Error("useLocationMoves needs a RiAppProvider above this component");
   const handler = useRef(onMove);
   useInsertionEffect(() => { handler.current = onMove; });
   useEffect(() => follow((data) => handler.current(data as TData)), [follow]);
+}
+
+/**
+ * Where the host asked People to go: `open_people`'s path, a host link
+ * (`openai/deepLink`) or a card's `openFullscreen(path)`. EmbeddedView calls
+ * this with the router's place; the open People view moves there. A request
+ * that arrives before the view is ready waits for it.
+ */
+let navigator: ((path: string) => void) | null = null;
+let waiting: string | null = null;
+export function navigatePeople(path: string) {
+  if (navigator) navigator(path);
+  else waiting = path;
 }
 
 export function assertHttpsUrl(url: string): string {
@@ -115,15 +132,33 @@ export function createCoalescer<T>(send: (value: T) => void, options: CoalescerO
   };
 }
 
-const UNAVAILABLE_HERE = "Open People in your browser to do this. It isn't available inside a chat.";
 const splitPath = (path: string) => {
   const url = new URL(path, "http://view.local");
   return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
 };
 const currentTheme = (): Theme => (typeof document !== "undefined" && document.documentElement.dataset.theme === "dark") ? "dark" : "light";
 
-/** Selected records go to the assistant as the kit's bounded selection: one record's id and title. */
-async function selectionTitle(call: (name: string, input: Record<string, unknown>) => Promise<unknown>, item: { kind: string; id: string }) {
+/** The place's name, as People's tabs and records name it. */
+const SECTION_TITLES: Record<string, string> = {
+  today: "Today", people: "People", "follow-ups": "Follow-ups", companies: "Companies", pipelines: "Pipelines", sources: "Sources",
+  person: "A person", company: "A company", organization: "A company", opportunity: "An opportunity",
+};
+const FILTER_NAMES: Record<string, string> = { text: "Search", listIds: "Lists", lastExchange: "Last exchange", nextMeeting: "Next meeting", organizationIds: "Companies", sources: "Sources", pinned: "Pinned" };
+const FOLLOW_UPS: Record<string, string> = { i_owe: "I owe", waiting_on: "Waiting on", suggestions: "Suggestions", completed: "Completed" };
+/** The screen's filters as names and short values, at most eight. */
+function filtersOf(state: { filters?: Record<string, unknown>; viewId?: string; followUps?: string }) {
+  const out: Record<string, string> = {};
+  if (state.followUps) out.Show = FOLLOW_UPS[state.followUps] ?? state.followUps;
+  if (state.viewId) out.View = state.viewId;
+  for (const [key, value] of Object.entries(state.filters ?? {})) {
+    if (value === undefined || value === null || (Array.isArray(value) && !value.length)) continue;
+    out[FILTER_NAMES[key] ?? key] = (typeof value === "string" ? value : JSON.stringify(value)).slice(0, 120);
+  }
+  return Object.fromEntries(Object.entries(out).slice(0, 8));
+}
+
+/** A selected record's name, for the assistant: only records this connection may see get one. */
+async function recordTitle(call: (name: string, input: Record<string, unknown>) => Promise<unknown>, item: { kind: string; id: string }) {
   try {
     const result = await call("get_record_title", { kind: item.kind, id: item.id }) as { title: string | null };
     return result.title;
@@ -150,13 +185,16 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
   const count = useRef(0);
   // Inside an assistant the view has no address: its places are kept here.
   const stack = useRef<string[]>([]);
-  const callRef = useRef(client.call);
-  callRef.current = client.call;
+  // Only the latest place asked for is shown, whichever answer arrives last.
+  const latest = useRef(0);
+  const clientRef = useRef(client);
+  clientRef.current = client;
+  const here = () => embedded || typeof window === "undefined" ? stack.current.at(-1) ?? "/" : window.location.pathname + window.location.search;
 
   // Ri gave the view the `data` part of the opener's result. open_view returns { resource, data, scope }.
   const open = useCallback(async (place: string) => {
     const { path, query } = splitPath(place);
-    return ((await callRef.current("open_view", { path, query })) as { data: unknown }).data;
+    return ((await clientRef.current.call("open_view", { path, query })) as { data: unknown }).data;
   }, []);
   const receive = useCallback((value: unknown, moved: boolean) => {
     const key = stableJson(value);
@@ -170,18 +208,28 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
     }
   }, []);
   const moveTo = useCallback(async (place: string) => {
-    try { receive(await open(place), true); setError(null); }
-    catch (failure) { setError(errorMessage(failure, "People could not open this place")); }
+    const ticket = ++latest.current;
+    try {
+      const value = await open(place);
+      if (ticket === latest.current) { receive(value, true); setError(null); }
+    } catch (failure) { if (ticket === latest.current) setError(errorMessage(failure, "People could not open this place")); }
   }, [open, receive]);
 
   useEffect(() => {
-    const start = initialPath ?? (embedded || typeof window === "undefined" ? "/" : window.location.pathname + window.location.search);
+    const start = waiting ?? initialPath ?? (embedded || typeof window === "undefined" ? "/" : window.location.pathname + window.location.search);
+    waiting = null;
     stack.current = [start];
-    let active = true;
-    open(start).then((value) => { if (active) { receive(value, false); setError(null); } },
-      (failure) => { if (active) setError(errorMessage(failure, "People could not open")); });
-    return () => { active = false; };
-  }, [open, receive, initialPath, embedded]);
+    const ticket = ++latest.current;
+    open(start).then((value) => { if (ticket === latest.current) { receive(value, false); setError(null); } },
+      (failure) => { if (ticket === latest.current) setError(errorMessage(failure, "People could not open")); });
+    // The host asks the open view to go somewhere: open_people's path, its link to a record, a card.
+    navigator = (path) => {
+      if (count.current === 0 && latest.current === ticket) { stack.current = [path]; }
+      else stack.current.push(path);
+      void moveTo(path);
+    };
+    return () => { navigator = null; latest.current++; };
+  }, [open, receive, moveTo, initialPath, embedded]);
 
   // The host's theme, which the kit applies to <html data-theme>.
   useEffect(() => {
@@ -205,28 +253,48 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
     return () => { window.removeEventListener("popstate", onPop); document.removeEventListener("visibilitychange", onVisible); };
   }, [embedded, moveTo, open, receive]);
 
-  const selection = useRef<ReturnType<typeof createCoalescer<unknown>> | null>(null);
-  if (!selection.current)
-    selection.current = createCoalescer<unknown>((state) => {
-      const selected = (state as { selected?: { kind: string; id: string }[] })?.selected ?? [];
-      if (selected.length !== 1) { client.select(null); return; }
-      void selectionTitle(callRef.current, selected[0]).then((title) => client.select(title ? { id: selected[0].id, title } : null));
+  // What the person is looking at reaches the assistant through the kit's bounded context:
+  // the section, its path (which Open in browser and open_people can open again), its filters and the open record.
+  const place = useRef<ReturnType<typeof createCoalescer<unknown>> | null>(null);
+  if (!place.current)
+    place.current = createCoalescer<unknown>((value) => {
+      const state = (value ?? {}) as { section?: string; selected?: { kind: string; id: string }[]; filters?: Record<string, unknown>; viewId?: string; followUps?: string };
+      const current = clientRef.current;
+      current.setSection({ title: SECTION_TITLES[state.section ?? ""] ?? "People", path: here(), filters: filtersOf(state) });
+      const selected = state.selected ?? [];
+      if (!selected.length) { current.select(null); return; }
+      void Promise.all(selected.slice(0, 50).map(async (item) => ({ id: item.id, title: await recordTitle(current.call, item) })))
+        .then((items) => {
+          const named = items.filter((item): item is { id: string; title: string } => !!item.title);
+          if (named.length === 1) clientRef.current.select(named[0]);
+          else if (named.length) clientRef.current.selectMany(named, selected.length);
+          else clientRef.current.select(null);
+        });
     }, { delay: 150, maxWait: 1000, minInterval: 100 });
-  useEffect(() => () => { selection.current?.flush(); client.select(null); }, [client.select]);
+  useEffect(() => () => { place.current?.flush(); clientRef.current.select(null); clientRef.current.setSection(null); }, []);
 
   const actions = useMemo(() => ({
     call: async <T,>(action: string, input: Record<string, unknown> = {}, options: { invocationId?: string } = {}) =>
-      (await callRef.current<T>(action, options.invocationId ? { ...input, requestId: options.invocationId } : input)) as T,
-    context(state: unknown) { selection.current!.push(state); },
-    ask: async () => { throw new Error("Asking from People isn't available here. Ask in your chat instead."); },
+      (await clientRef.current.call<T>(action, options.invocationId ? { ...input, requestId: options.invocationId } : input)) as T,
+    context(state: unknown) { place.current!.push(state); },
+    selectRecords(records: { id: string; title: string }[], total?: number) {
+      clientRef.current.selectMany(records.slice(0, 50), total ?? records.length);
+    },
+    ask: async (prompt: string) => {
+      if (!(await clientRef.current.draftMessage(prompt))) throw new Error(`Copy this into the chat: ${prompt}`);
+    },
     openSources: async () => {
       if (embedded) { stack.current.push("/sources"); await moveTo("/sources"); return; }
       window.history.pushState({ people: true }, "", "/sources");
       await moveTo("/sources");
     },
     manageAccess: async () => {
-      if (embedded) throw new Error("Choose which accounts People may read on People's page in Ri.");
-      window.location.assign("/settings");
+      // Which accounts People reads is chosen in Ri; connecting People to Ri is in People's Settings.
+      if (!embedded) { window.location.assign("/settings"); return; }
+      if (!(await clientRef.current.openInBrowser("/settings"))) {
+        const address = clientRef.current.browserURL("/settings");
+        throw new Error(address ? `Open People's Settings in your browser: ${address}` : "Choose which accounts People may read on People's page in Ri.");
+      }
     },
     setLocation(path: string, options: { replace?: boolean; push?: boolean } = {}) {
       if (embedded) {
@@ -236,8 +304,8 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
         else stack.current.push(path);
         return;
       }
-      const here = window.location.pathname + window.location.search;
-      if (here === path) return;
+      const current = window.location.pathname + window.location.search;
+      if (current === path) return;
       const samePlace = window.location.pathname === splitPath(path).path;
       if (options.replace || (samePlace && !options.push)) window.history.replaceState({ people: true }, "", path);
       else window.history.pushState({ people: true }, "", path);
@@ -256,12 +324,11 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
     },
     openExternal: async (url: string) => {
       const safe = assertHttpsUrl(url);
-      if (embedded) throw new Error(UNAVAILABLE_HERE);
-      window.open(safe, "_blank", "noopener,noreferrer");
+      if (!(await clientRef.current.openLink(safe))) throw new Error(`Copy this address into your browser: ${safe}`);
     },
     openDirections: async (address: string) => {
-      if (embedded) throw new Error(UNAVAILABLE_HERE);
-      window.open(directionsUrl(address), "_blank", "noopener,noreferrer");
+      const url = directionsUrl(address);
+      if (!(await clientRef.current.openLink(url))) throw new Error(`Copy this address into your browser: ${url}`);
     },
     selectFile: () => new Promise<SelectedFile | null>((resolve, reject) => {
       const input = document.createElement("input");
@@ -281,17 +348,12 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
       input.click();
     }),
     download: async (file: DownloadRequest) => {
-      if (embedded) throw new Error(UNAVAILABLE_HERE);
       if ((file.text === undefined) === (file.base64 === undefined)) throw new Error("Provide either text or base64 content to download");
-      const bytes = file.text !== undefined ? new TextEncoder().encode(file.text) : Uint8Array.from(atob(file.base64!), (char) => char.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.name.split(/[\\/]/).pop()?.trim() || "export";
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const name = file.name.split(/[\\/]/).pop()?.trim() || "export";
+      const saved = await clientRef.current.download(file.text !== undefined
+        ? { name, mimeType: file.mimeType, text: file.text }
+        : { name, mimeType: file.mimeType, data: Uint8Array.from(atob(file.base64!), (char) => char.charCodeAt(0)) });
+      if (!saved) throw new Error("This app can't save files here. Use Open in browser to export.");
     },
   }), [embedded, moveTo]);
 
@@ -300,8 +362,9 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
     return () => { movers.current.delete(listener); };
   }, []);
   const value = useMemo<RiApp>(() => ({
-    data, revision, theme, connected: data !== undefined, error, moves, embedded, canAsk: false, ...actions,
-  }), [data, revision, theme, error, moves, embedded, actions]);
+    data, revision, theme, connected: data !== undefined, error, moves, embedded,
+    canAsk: embedded && client.can.draft, canDownload: client.can.download, ...actions,
+  }), [data, revision, theme, error, moves, embedded, client.can.draft, client.can.download, actions]);
   return (
     <RiAppContext.Provider value={value}>
       <FollowContext.Provider value={follow}>

@@ -197,7 +197,7 @@ export function accessOf(invocation: AppInvocation): AppInvocation['access'] {
   };
 }
 export function requireOwner(scope: AccessScope) {
-  if (scope.kind !== 'owner') throw new AppError('forbidden', "Open People in your browser to do this. It's only for you, not for connected assistants");
+  if (scope.kind !== 'owner') throw new AppError('forbidden', "This connection sees only part of People, so this isn't available here. Open People in your browser to do it");
 }
 
 // ─── The hub ─────────────────────────────────────────────────────────────────
@@ -335,12 +335,17 @@ export const previewMode = () => process.env.PEOPLE_PREVIEW === '1';
  * call it, then close the hub client. Only the installation's owner uses
  * People (it is one person's relationships); other signed-in accounts are refused.
  */
-export async function withInvocation<T>(kit: KitContext, options: { requestId?: string }, work: (invocation: AppInvocation, c: Ctx) => Promise<T> | T): Promise<T> {
+export async function withInvocation<T>(kit: KitContext, options: { requestId?: string; viewOnly?: boolean }, work: (invocation: AppInvocation, c: Ctx) => Promise<T> | T): Promise<T> {
   const c = await contextFor(kit.platform);
   const owner = await installationOwner(kit.platform);
   if (owner && kit.viewer.id !== owner) throw new AppError('forbidden', 'People belongs to one person. Sign in as its owner to use it');
+  // In Ri the person's view of People acted as the owner. Inside a host the view and the model share
+  // one connection, so People can tell them apart only by the action: a view-only action (the host
+  // keeps it from the model, MCP Apps visibility ["app"]) acts as the owner when the person gave
+  // this connection every source. A connection limited to some sources stays limited.
+  const ownerView = !!options.viewOnly && !!kit.connection && kit.connection.sources === null;
   const principal: AppPrincipal = kit.job ? { kind: 'job', id: kit.job.name }
-    : kit.connection ? { kind: 'chat', id: kit.connection.clientId }
+    : kit.connection && !ownerView ? { kind: 'chat', id: kit.connection.clientId }
     : previewMode() ? { kind: 'fixture', id: c.instanceId, fixtureAudience: 'user' }
     : { kind: 'owner-ui', id: kit.viewer.id };
   const hub = hubCapability(kit, c);
@@ -348,13 +353,13 @@ export async function withInvocation<T>(kit: KitContext, options: { requestId?: 
   const invocation: AppInvocation = {
     id: options.requestId ?? randomUUID(),
     principal,
-    audience: kit.job ? 'schedule' : kit.connection ? 'agent' : 'user',
+    audience: kit.job ? 'schedule' : kit.connection && !ownerView ? 'agent' : 'user',
     deadline: Date.now() + (kit.job ? 240_000 : 60_000),
     signal: controller.signal,
     access: {
       protocol: 'app-builder-v1', actorId: `${principal.kind}:${principal.id}`,
       scopeRef: kit.connection?.clientId ?? null,
-      chosen: kit.connection ? { sources: kit.connection.sources, write: kit.connection.write } : null,
+      chosen: kit.connection && !ownerView ? { sources: kit.connection.sources, write: kit.connection.write } : null,
       accounts: principal.kind === 'fixture' ? [] : hubAccounts(c.db).grants,
     },
     capability: (name, input, target) => {

@@ -119,9 +119,12 @@ describe('assistants over MCP', () => {
     expect((await mcp('not-a-token', 'tools/list', {})).status).toBe(401);
     const all = await createTestConnection(state.platform!, { name: 'Ri' });
     const work = await createTestConnection(state.platform!, { name: 'Ri · Work', sources: ['account:work'], write: false });
-    const listed = (await mcp(all.accessToken, 'tools/list', {})).body!.result.tools.map((item: { name: string }) => item.name);
+    const tools = (await mcp(all.accessToken, 'tools/list', {})).body!.result.tools as { name: string; _meta?: { ui?: { visibility?: string[] } } }[];
+    const listed = tools.map((item) => item.name);
     expect(listed).toContain('search_people');
-    expect(listed).not.toContain('merge_people');
+    // The person's own decisions are tools the view may call and the host keeps from the model.
+    expect(tools.find((item) => item.name === 'merge_people')?._meta?.ui?.visibility).toEqual(['app']);
+    expect(tools.find((item) => item.name === 'search_people')?._meta?.ui?.visibility).toBeUndefined();
     const everyone = await tool(all.accessToken, 'list_people', { limit: 50 });
     expect(everyone.structuredContent.result.items.map((item: { name: string }) => item.name).sort()).toEqual(['Jordan Bell', 'Maya Chen']);
     const workOnly = await tool(work.accessToken, 'list_people', { limit: 50 });
@@ -167,6 +170,61 @@ describe('assistants over MCP', () => {
     expect(open._meta?.ui?.resourceUri).toBe('ui://people/main');
     const resources = (await mcp(all.accessToken, 'resources/read', { uri: 'ui://people/main' })).body!.result;
     expect(resources.contents[0]._meta.ui.csp).toEqual({ connectDomains: [], resourceDomains: [] });
+  });
+});
+
+describe('the person\'s own work inside a host', () => {
+  it('a view with every source acts as the owner for view-only actions; a limited connection stays limited', async () => {
+    await runJob();
+    const everything = await createTestConnection(state.platform!, { name: 'Ri' });
+    const reader = await createTestConnection(state.platform!, { name: 'Ri · Reader', write: false });
+    const work = await createTestConnection(state.platform!, { name: 'Ri · Work', sources: ['account:work'] });
+    // Sources, as the owner's view in Ri had it.
+    const sources = await tool(everything.accessToken, 'list_sources', {});
+    expect(sources.isError).toBeFalsy();
+    expect(sources.structuredContent.result.accounts.map((item: { account: string }) => item.account)).toContain('work');
+    const opened = await tool(everything.accessToken, 'open_view', { path: '/sources', query: {} });
+    expect(opened.structuredContent.result.data.owner).toBe(true);
+    // A connection limited to some sources can't see the whole installation's Sources.
+    const refused = await tool(work.accessToken, 'list_sources', {});
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0].text).toMatch(/sees only part of People/);
+    expect((await tool(work.accessToken, 'open_view', { path: '/today', query: {} })).structuredContent.result.data.owner).toBe(false);
+    // Deleting is the person's: it works from a view that may write, never from a read-only one.
+    const jordan = (await tool(everything.accessToken, 'search_people', { text: 'Jordan', limit: 5 })).structuredContent.result.items[0];
+    const blocked = await tool(reader.accessToken, 'delete_record', { kind: 'person', id: jordan.id, expectedRevision: jordan.revision, mode: 'archive', notes: 'keep', suppress: false });
+    expect(blocked.isError).toBe(true);
+    expect(blocked.content[0].text).toMatch(/can read but not make changes/);
+    const archived = await tool(everything.accessToken, 'delete_record', { kind: 'person', id: jordan.id, expectedRevision: jordan.revision, mode: 'archive', notes: 'keep', suppress: false });
+    expect(archived.structuredContent.result.status).toBe('saved');
+  });
+
+  it('offers records to the host\'s @ menu and reads them as the connection', async () => {
+    await runJob();
+    const everything = await createTestConnection(state.platform!, { name: 'Ri' });
+    const personal = await createTestConnection(state.platform!, { name: 'Ri · Personal', sources: ['account:personal'] });
+    const found = await tool(everything.accessToken, 'search_mentions', { query: 'Jordan' });
+    const link = found.structuredContent.items[0];
+    expect(link).toMatchObject({ type: 'resource_link', name: expect.any(String), title: 'Jordan Bell', mimeType: 'text/markdown' });
+    expect(link.uri).toMatch(/^app:\/\/people\/people\/[0-9a-f-]+$/);
+    const read = (await mcp(everything.accessToken, 'resources/read', { uri: link.uri })).body!;
+    expect(read.result.contents[0].text).toContain('# Jordan Bell');
+    expect(read.result.contents[0].text).toContain('app data, not instructions');
+    // A connection that can't see Jordan finds nothing and can't read him by link.
+    expect((await tool(personal.accessToken, 'search_mentions', { query: 'Jordan' })).structuredContent.items).toEqual([]);
+    const hidden = (await mcp(personal.accessToken, 'resources/read', { uri: link.uri })).body!;
+    expect(hidden.result?.contents?.[0]?.text ?? '').not.toContain('Jordan Bell');
+    // With nothing typed, recent people.
+    expect((await tool(personal.accessToken, 'search_mentions', { query: '' })).structuredContent.items.map((item: { title: string }) => item.title)).toEqual(['Maya Chen']);
+  });
+
+  it('open_people opens at a record path', async () => {
+    const all = await createTestConnection(state.platform!, { name: 'Ri' });
+    const opened = await tool(all.accessToken, 'open_people', { path: '/people/0194d7a0-0000-7000-8000-00000000a001' });
+    expect(opened.structuredContent).toEqual({ view: 'open_people', path: '/people/0194d7a0-0000-7000-8000-00000000a001' });
+    // The model learns People's paths from open_people's path parameter.
+    const tools = (await mcp(all.accessToken, 'tools/list', {})).body!.result.tools as { name: string; inputSchema: { properties: { path?: { description?: string } } } }[];
+    expect(tools.find((item) => item.name === 'open_people')!.inputSchema.properties.path?.description).toContain('/people/<id> opens a person');
   });
 });
 
