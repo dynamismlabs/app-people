@@ -9,7 +9,7 @@ People ran inside Ri as an included app (`apps/people` at Ri commit `3c442810`, 
 
 Lines about People's view inside an assistant say what each host did. Ri was checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac, on the web (headless Chromium) and in Ri's desktop app (source Electron), with dummy records only. It was not a Ri Home in everyday use, which runs on another computer. ChatGPT and Claude are still pending. The results are in [Real hosts](#real-hosts), with screenshots in `docs/parity/`.
 
-First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"), and on November 17, 2026 for kit `main` `ff47742` (still core 0.2.2, with the kit gaps the four ports found fixed in dynamismlabs/mcp-app-builder#10). Ri's hub was read from its code; Ri itself wasn't run.
+First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"), and on November 17, 2026 for kit `main` `ff47742` (still core 0.2.2, with the kit gaps the four ports found fixed in dynamismlabs/mcp-app-builder#10), then for kit `main` `df533b0` (#11 and #12) with Ri's `not_found` from dynamismlabs/ri#7. Ri's hub was read from its code; Ri itself wasn't run.
 
 ## The short version
 
@@ -29,7 +29,7 @@ Still blocked:
 
 The kit's portable backup now restores People, search included (K2, closed). Downloads work inside Ri since dynamismlabs/ri#2 (R5).
 
-One thing still works through a stopgap that depends on wording: telling "not found" from other hub errors. The kit keeps Ri's error code now (K5), but Ri sends a provider's 404 or 410 as `not_found` only once dynamismlabs/ri#7 merges, so People still reads it from the message. Finding which accounts Ri lent reads the kit's structured answer now (K4). People's account keys still wait on Ri's stable ids (R1).
+Hub errors are told apart by their code now (K5, closed): since dynamismlabs/ri#7 a Gmail or Calendar 404 or 410 reaches People as `not_found` with the provider's status, and Ri's own services say `unsupported` by code. People reads the message only for a hub from before ri#7. Finding which accounts Ri lent reads the kit's structured answer (K4). People's account keys still wait on Ri's stable ids (R1).
 
 What changed shape, and works:
 
@@ -86,7 +86,7 @@ What changed shape, and works:
 | Ri's single five-minute schedule ran People's bounded steps | Works differently | People declares its own job, "Update from your accounts", every five minutes. The kit runs it, shows it in Settings with its last and next run and Run now, and survives restarts. Each run first asks the hub which accounts it lends, then runs People's same bounded steps until nothing is due or 2.5 minutes pass (Ri ran one step per call). |
 | One provider page and at most ten new messages per step, current changes before history, fair rotation between accounts | Works | People's own step queue is unchanged. |
 | History limited to 30, 90 or 365 days (90 for mail, a year for calendar by default) | Works | |
-| An expired history cursor restarts a bounded rescan; deleted messages become unavailable; canceled events stay canceled | Works | People reads "not found" from the hub's message. The kit keeps Ri's code since `ff47742` (K5), but Ri sends a provider's 404 or 410 as `not_found` only with dynamismlabs/ri#7, so People moves to the code after that. |
+| An expired history cursor restarts a bounded rescan; deleted messages become unavailable; canceled events stay canceled | Works | People reads the hub's `not_found` code and the provider's status (K5). Gmail's expired history (404) rescans and a deleted message (404) becomes unavailable. Calendar restarts its window only for an expired sync token (410): a missing calendar (404) fails the step and keeps the token. A hub from before dynamismlabs/ri#7 sends these as `provider_error`, and People reads the status from its message instead. Both are tested (`test/sync.test.ts`). |
 | A revoked account needs reconnecting while others keep syncing | Works differently | When the hub stops lending an account, People shows it as no longer granted. When the whole hub needs reconnecting, the job's run fails with "Ri needs you to connect this app again" and keeps every checkpoint. When Ri is unreachable the run retries later. |
 | A step and its records commit together; an interrupted step resumes from its last committed page | Works, better | In Ri the step held a write transaction while it waited on the network. Now it reads first and stores records and checkpoint in one short transaction, because the kit writes to the same file from its own connection. |
 | Calls carry which job made them, for Ri's audit log | Works | The kit adds `_meta["app/job"]` and `["app/jobRun"]`. |
@@ -150,7 +150,7 @@ Every old test file is ported and passes through the kit's adapter, except the p
 
 | Old test | Now |
 | --- | --- |
-| briefing-text, capture, extraction, followups, identity, imports, merge, performance, personal, pipelines, preview, profiles, review-leaks, scopes, sync | Pass. Each call goes through People's kit action as the kit runs it: your browser, a connection with its recorded choice (made with the kit's `createTestConnection`), or the job. Hub calls go to a fake hub that answers with Ri's tool names, `account` argument, choose-account answer and errors as the kit's client reports them. |
+| briefing-text, capture, extraction, followups, identity, imports, merge, performance, personal, pipelines, preview, profiles, review-leaks, scopes, sync | Pass. Each call goes through People's kit action as the kit runs it: your browser, a connection with its recorded choice (made with the kit's `createTestConnection`), or the job. Hub calls go to a fake hub that answers with Ri's tool names, `account` argument, choose-account answer and errors as the kit's client reports them. A missing item and `unsupported` go through the kit's own client, as today's Ri or one from before dynamismlabs/ri#7 answers them. |
 | contract | Rewritten for the kit: every action converted, examples still parse, audiences, MCP tools are exactly the agent actions plus the views and `open_people`, every tool has an output schema, job and connectors in the contract. |
 | release | Passes. Two restores use a database copy, and one uses the kit's portable backup, search included (an expected failure until kit `ff47742`). |
 | view.packaged (Ri packaging, AppEngine, screenshots at widths and dark mode) | Removed with Ri's app engine. Replaced by `test/people.browser.spec.ts` (`pnpm test:host`), which drives the whole view in the kit's strict MCP Apps test host, and `test/kit.test.ts` for the view tools and resource. Width and dark-mode screenshots aren't automated any more (the test host is light only). |
@@ -163,7 +163,6 @@ Every old test file is ported and passes through the kit's adapter, except the p
 - **K3. The capability shapes are too thin for People, and the fixture source can't stand in for pass-through tools.** `MailMessage` has no list or reply headers; `CalendarEvent` has no attendees, organizer, recurrence or time zones; neither has an incremental cursor. People passes Ri's tools through by name. The fixture source answers a pass-through tool with one fixed result whatever the arguments, so People's mail and calendar sync can't run under `APP_CONNECTORS=fixtures` (the job leaves the account waiting with the reason). People's tests use their own fake hub with Ri's tool shapes. Adding headers and attendees to the capability shapes, or letting fixtures answer by arguments, would close this.
 - **K10. No MCP prompts**, so apps can't offer skills-like workflows.
 - **K12. The kit's test host misses clicks at the bottom of a full-screen frame.** In `browser-host.ts` with Chrome, a real mouse click about 80 px from the bottom of a sandboxed frame made full screen doesn't reach the frame at all (no pointer events inside it), while clicks above it do. People's test dispatches its one click there. Worth checking whether real Chromium hosts (Ri's desktop app) behave the same.
-- **K13. `change` and `upgrade` don't refresh the service definition.** Since `ff47742` the kit's launchd plist sets `NODE_ENV=production`, but only `serve --install` writes it, so `local.people`, installed with the earlier core, runs without it after switching (see [Kit version](#kit-version)).
 - **The test host isn't in the core package.** `packages/core/test/browser-host.ts` and the OAuth helper are copied into `test/host/`; shipping them (or a `testHost()` export) would keep apps' host tests in step with the kit's.
 
 Closed by kit `main` `ff47742` (core 0.2.2, dynamismlabs/mcp-app-builder#10), each shown by a People test:
@@ -171,8 +170,11 @@ Closed by kit `main` `ff47742` (core 0.2.2, dynamismlabs/mcp-app-builder#10), ea
 - **K4. No structured account choice.** Ri's `choose_account` answer reaches People as `SetupRequired` with `code` and `accounts`, so People no longer reads names from the message (`test/kit.test.ts`, several accounts by name). The kit's `accounts()` (Ri's `ri__list_accounts`, merged in dynamismlabs/ri#4) isn't used yet: People keys an account by its address, and moving to Ri's stable ids needs a data migration (R1).
 - **K9. Connection choices kept deleted sources.** The core drops them when a connection is used or listed, and saves the pruned choice. People's own filter on connections is gone, and a deleted import leaving two connections' choices is tested over MCP. People still filters the saved choice it reads to recheck queued work, which the kit only prunes on the connection's next use.
 
-Closed in the kit, not yet used by People:
-- **K5. Pass-through errors lost their code.** The kit keeps Ri's `code` now (`ConnectorError`, and on `SetupRequired` and `SourceUnavailable`). People still reads "not found" (expired history, a deleted message, an expired sync token) and "unsupported" from the message, because Ri sends a provider's 404 or 410 as `provider_error` until dynamismlabs/ri#7 merges.
+Closed by kit `main` `df533b0` (core 0.2.2, dynamismlabs/mcp-app-builder#11 and #12) with dynamismlabs/ri#7:
+- **K5. Pass-through errors lost their code.** The kit keeps Ri's `code`, and `ConnectorError.httpStatus` carries the provider's status. People reads `not_found` and `unsupported` by code. Only Calendar's 410 restarts a window. The message is read only for a hub from before ri#7 (`provider_error`, "provider error 404 for …"). `test/sync.test.ts` runs history expiry and Calendar's 410 and 404 against both hubs, and `test/extraction.test.ts` gets Ri's `unsupported` in its own words, which don't say "unsupported". Each test fails with its branch of the change removed. Before this, Ri's `unsupported` from its model service reached People as a failure, not as extraction being unavailable.
+
+Fixed in the kit, not yet shown for People:
+- **K13. `change` and `upgrade` don't refresh the service definition.** Since #12 the switch rewrites the launchd plist when it differs from what `serve --install` would write, so `local.people` should get `NODE_ENV=production` at its next switch. People hasn't switched on `df533b0` yet ([Kit version](#kit-version)), so its plist still has no `NODE_ENV`.
 
 Closed by core 0.2.2 (kit `main` `1713f6a`):
 - **K6. App-only tools:** `visibility: ["app"]`, enforced by Ri.
@@ -222,13 +224,26 @@ Small things seen, not fixed: Open in browser at the top right is hard to read i
 
 ## Kit version
 
-Core 0.2.2 from kit `main` `ff47742`, vendored in `vendor/`. `pnpm exec app-builder upgrade --core ~/dynamism/app-builder --json`, run on the installed `local.people`, stopped at `checks_failed`: the only failure was the expected-failure backup test, which now passed (K2). Its commit (`9256926`: the new tarball, the lockfile and the build skill) was merged by hand, the test made a normal one, and `change --json` then switched the service. Nothing was reinstalled.
+Core 0.2.2 from kit `main` `df533b0`, from the tarball the kit session packed, vendored in `vendor/`. People `v0.1.0` (`17ac728`) is on kit `bbbb340`.
+
+`pnpm exec app-builder upgrade --core <packed tarball> --json`, run on the installed `local.people`, stopped at `checks_failed`. All three failures were timing:
+- The two latency tests missed 300 ms at p95 (432 and 1952 ms), with the Mac's load average about 200.
+- The duplicate wake-up test crossed into the next five-minute slot, because it started from the clock. It's fixed in `eadb10f`.
+
+The upgrade's commit (`11d713b`: the new tarball, the lockfile and the build skill) was merged by hand. `change --json` then stopped at `checks_failed` on the two latency tests alone (1010 and 998 ms), with the load average 290–510. Every other test passed in the copy. The service still runs `17ac728`.
+
+On kit `ff47742`: `upgrade --core ~/dynamism/app-builder` stopped at `checks_failed` because the expected-failure backup test passed (K2). Its commit (`9256926`) was merged by hand, the test made a normal one, and `change --json` switched the service. Nothing was reinstalled.
 
 Earlier: the kit's `upgrade --core` moved People from 0.2.0 to core 0.2.2 at kit `1713f6a` (run from the kit checkout's CLI, since 0.2.0 predates `upgrade`), before People was installed.
 
-Not picked up by `change`: the kit now runs services with `NODE_ENV=production`, but only `serve --install` writes the launchd plist, so `local.people` (installed with the earlier core) still runs without it. Callers still never see stacks, which the core enforces either way. A kit gap: `change` and `upgrade` could refresh the service definition, or `status` could say it's out of date.
+The service definition: through `ff47742` only `serve --install` wrote the launchd plist, so `local.people`, installed with an earlier core, runs without `NODE_ENV=production` (K13). Callers never see stacks either way, which the core enforces.
 
 ## Evidence
+
+November 17, kit `df533b0`:
+- `pnpm typecheck` passes. `pnpm test` passes 129 of 131 tests in 18 files. The two failures are the latency tests (587 and 1126 ms at p95), with the load average 170–290.
+- Each part of the K5 change was removed in turn and its tests rerun: reading `not_found` by code, reading `unsupported` by code, the `provider_error` fallback, and Calendar keeping its token on a 404. Each removal failed exactly the tests for that part, and the unchanged code passed them.
+- Not run: Ri itself, a real Gmail or Calendar account, and `pnpm test:host` (no view code changed).
 
 November 17, kit `ff47742`:
 - `pnpm typecheck` passes, and `pnpm test` passes 18 files and 128 tests, with no expected failures left.
