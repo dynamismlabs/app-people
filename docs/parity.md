@@ -232,7 +232,9 @@ Small things seen, not fixed: Open in browser at the top right is hard to read i
 
 ## Kit version
 
-Core 0.2.2 from kit `main` `a8e9b5d` (dynamismlabs/mcp-app-builder#13: no launchd throttling, a measured health wait, never restoring twice), vendored in `vendor/`. The kit session ran `upgrade` with it on the installed `local.people`, which switched cleanly to `887754c`, carrying People's `v0.1.1` work through `b7ea18f`. `/api/health` answers with release `887754c17a14`, and `/mcp` without a token answers 401. People `v0.1.0` (`17ac728`) was on kit `bbbb340`.
+Core 0.2.2 from kit `main` `023f92f` (dynamismlabs/mcp-app-builder#14 to #17), vendored in `vendor/`. `pnpm exec app-builder upgrade --core <packed tarball> --health-timeout 300 --json` on the installed `local.people` built with the service's own Node (#14) and stopped at `checks_failed`. The contract test lists the exact tool set, and the core had added `read_settings` and `change_settings`. The upgrade's commit (`62b0a31`) fast-forwarded `main`. After the Settings, transaction and test commits, `change --json --health-timeout 300` passed resolve, copy, install, typecheck, test (138 passed), build, rehearse, stop, snapshot and switch: `local.people` runs release `fe9f3923c344` at `http://127.0.0.1:4311`, `/api/health` answers with it, and `/mcp` without a token answers 401. The plist still has `NODE_ENV=production`, `ProcessType` Interactive and Node 24.2.0.
+
+On kit `a8e9b5d` (#13: no launchd throttling, a measured health wait, never restoring twice), the kit session's `upgrade` switched `local.people` cleanly to `887754c`, carrying People's `v0.1.1` work through `b7ea18f`. People `v0.1.0` (`17ac728`) was on kit `bbbb340`.
 
 On kit `df533b0`: `pnpm exec app-builder upgrade --core <packed tarball> --json`, run on the installed `local.people`, stopped at `checks_failed`. All three failures were timing:
 - The two latency tests missed 300 ms at p95 (432 and 1952 ms), with the Mac's load average about 200.
@@ -247,6 +249,17 @@ Earlier: the kit's `upgrade --core` moved People from 0.2.0 to core 0.2.2 at kit
 The service definition: through `ff47742` only `serve --install` wrote the launchd plist, so `local.people`, installed with an earlier core, ran without `NODE_ENV=production` until the `887754c` switch rewrote it (K13). Callers never see stacks either way, which the core enforces.
 
 ## Evidence
+
+November 17, kit `023f92f` (People `v0.1.2`, release `fe9f392`):
+- `pnpm typecheck` passes. `pnpm test` passes 19 files and 138 tests, and so did the gate in `change`.
+- `pnpm test:host` passes 4 tests in the strict test host. With the view's navigate put back to People's own, the new Settings test failed at Back to People: the view stayed on Settings.
+- `test/transactions.test.ts`: with `Db.tx` changed to commit the work's partial writes and then throw, all four tests failed.
+- `pnpm test:perf` at a load average of about 5 on 16 cores, both groups measured and passed.
+  - With each statement its own transaction, the person's calls at p95 were: the first page by name 16 ms, each sort 18.8 ms, paging 27.9 ms, filtered 30.4 ms, `list_organizations` 11.8 ms. The narrower chat's were 34.8 ms by name and 40.1 ms by last exchange (K14).
+  - With each synchronous read as one transaction, the person's calls at p95 were: the first page by name 2.2 ms, each sort 8.5 ms, paging 4.4 ms, filtered by company, list and last exchange 28.5 ms, next meeting 3.7 ms, follow-up 4.1 ms, search 9.5 ms, `get_person` 0.7 ms, the timeline 1.7 ms, `list_organizations` 2.2 ms, `get_organization` 0.9 ms, `get_today` 6.3 ms.
+  - The narrower chat's, p95: by name 23.2 ms, by last exchange 26.4 ms, search 5.4 ms, `get_person` 2.9 ms.
+- A statement in the core's `transaction()` costs about 14 µs, against 0.14 µs for a cached statement and 4 µs for a bare `BEGIN IMMEDIATE` and `COMMIT` around it (20,000 runs each, on the core's Node platform).
+- Not run: Ri, ChatGPT or Claude with the new Settings view, and a real Gmail or Calendar account.
 
 November 17, before tagging `v0.1.1` (release `887754c`, kit `a8e9b5d`):
 - `pnpm test:perf` at the default limit, at a load average of 11.1–11.6 on 16 cores, on the installed core: both groups were measured and passed.
