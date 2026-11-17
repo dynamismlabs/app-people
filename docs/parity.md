@@ -4,19 +4,30 @@ People ran inside Ri as an included app (`apps/people` at Ri commit `3c442810`, 
 
 - **Works**: the same behavior, checked by a test that runs through the kit (see Evidence).
 - **Works differently**: available, with the difference said.
+- **Works in hosts**: was browser-only or missing inside a chat, and now works inside a host's view too.
 - **Can't work**: not possible on the new path today, with why and what would have to change in the kit or in Ri.
 
-Checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0) and Ri's hub as read from its code (branch `claude/single-path-ri-approval-id`). Ri itself wasn't run.
+Lines about People's view inside an assistant say **verified in the test host; real hosts pending**: checked in the kit's strict MCP Apps test host (`pnpm test:host`), not yet in Ri, ChatGPT or Claude, which is the next step.
+
+First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"). Ri's hub was read from its code; Ri itself wasn't run.
 
 ## The short version
 
-**Almost everything People did works on App Builder: its screens, data, rules, imports, sync, AI features, follow-ups and privacy model, with all of its tests.** These can't work today:
+**Almost everything People did works on App Builder: its screens, data, rules, imports, sync, AI features, follow-ups and privacy model, with all of its tests.** With core 0.2.2, People's whole app also works inside a host, including the person's own work, which was browser-only before (verified in the test host; real hosts pending):
 
-1. **People's view inside Ri can't do owner-only work** (Sources, imports, export, merges, deleting records, navigation). The kit can't tell a tool call made by the view from one made by the model, so those actions are only in People's own page in the browser. Needs app-only tools (MCP Apps `visibility: ["app"]`) in the kit, enforced by Ri.
-2. **"Ask Ri", downloads and links don't work inside a chat.** The kit's view client has no way to stage a chat message, open a link or save a file. Needs those host calls in the kit's client (and a download call in Ri's host).
-3. **The kit's portable backup can't restore People.** It copies the internal tables SQLite keeps for People's full-text search, and restoring them fails. A database-file restore (what `change` uses for rollback) works. Needs the kit's snapshot to skip FTS5 shadow tables.
-4. **Ri can't link to a person, company or opportunity**, and **People's three skills can't ship with it**: MCP has no record registry or deep links, and the kit has no MCP prompts.
-5. **People can't run on Cloudflare.** Its records need synchronous SQLite transactions, which D1 doesn't have and the kit doesn't expose. People never ran on Cloudflare, so this loses nothing it had, but it's a limit of the kit for apps like it.
+- **The person's own work inside a host.** Sources, imports, export, identity review, merges, archiving and deleting, navigation and pipeline structure are view-only tools: the host keeps them from the model, and the view's call acts as the owner when the connection was given every source.
+- **Opening at a record.** `open_people` takes a path (`/people/<id>`), host links (`openai/deepLink`) move the open app, cards open it at one record, and people and companies are in the host's @ menu.
+- **Leaving the frame through the host.** Ask Ri drafts a question in the chat (shown to copy in a host that doesn't draft), export saves files with `ui/download-file`, links open with `ui/open-link`, and Open in browser is always in the header.
+- **The wider selection.** The assistant gets the section, its path and filters, the open record, and a bulk selection of up to 50 records.
+
+Still blocked:
+
+1. **A connection limited to some sources can't do the person's own work.** That's People's rule, as in Ri: Sources and merges cover every account, so only a connection with every source acts as the owner. Use Open in browser.
+2. **Downloads in Ri.** Ri's host doesn't have `ui/download-file` until dynamismlabs/ri#2 merges, so export inside Ri says to use Open in browser. A host's gap, not People's.
+3. **The person's own work is only as safe as the host's visibility rule.** A host that ignores `visibility: ["app"]` would let its model call those tools. Ri enforces it; ChatGPT and Claude are unchecked. A host's rule, not something the app can check (the view and the model share one connection).
+4. **The kit's portable backup can't restore People** (K2). A database-file restore (what `change` uses for rollback) works.
+5. **People's three skills can't ship with it**: the kit has no MCP prompts (K10).
+6. **People can't run on Cloudflare** (K1). People never ran on Cloudflare, so this loses nothing it had.
 
 Two things work only through stopgaps that depend on wording rather than structure, and should be fixed in the kit and Ri: finding which accounts Ri lent (K4, R1) and telling "not found" from other hub errors (K5).
 
@@ -25,7 +36,7 @@ What changed shape, and works:
 - **Chats → connections.** In Ri the owner chose, per chat, which accounts, collections and imports it could use. Now each assistant connection (each Ri place, Claude, ChatGPT) chooses them on People's consent screen. The same filtering applies to every query.
 - **Ri's grant → the hub.** People asks Ri's hub once for Gmail, Calendar and Ri's services. It finds which accounts it was lent by calling Gmail and Calendar, since neither Ri nor the kit has a way to list them (a stopgap, see gaps K4 and R2).
 - **Ri's five-minute schedule → People's own job**, every five minutes, run by the kit.
-- **Rich view context → the kit's bounded selection**: one selected record's id and title.
+- **Ri's view context → the kit's bounded context**: the section, its path and filters, the open record and up to 50 selected records.
 - **Ri's demo mode → `pnpm preview`**: the same fictional world, in a disposable data directory.
 
 ## Screens
@@ -34,8 +45,8 @@ What changed shape, and works:
 | --- | --- | --- |
 | Today: upcoming meetings, chosen follow-ups, waiting on, keep-in-touch reminders, birthdays, a short sourced review queue, says when nothing needs attention | Works | Same screen. Also `show_today` draws it as a card in a chat. |
 | People directory: saved views, structured filters, sortable columns, views picker, lists | Works | Same screen and actions. |
-| Selection of up to 50 loaded records for pin, list and archive changes | Works | In the screen. The assistant is told about one selected record only (see View context). |
-| A person: header with sourced role and company, fields column, Overview (My read, living profile, briefing, commitments), Timeline, Notes, Details with corrections | Works | Same screen. `show_person` draws a short card in a chat that opens the whole app at that person. |
+| Selection of up to 50 loaded records for pin, list and archive changes | Works | In the screen. The assistant gets the selected records' names and how many (the kit's `selectMany`). Verified in the test host; real hosts pending. |
+| A person: header with sourced role and company, fields column, Overview (My read, living profile, briefing, commitments), Timeline, Notes, Details with corrections | Works | Same screen. `show_person` draws a short card in a chat that opens the whole app at that person (`openFullscreen(path)`). Verified in the test host; real hosts pending. |
 | Personal side: birthday (year optional), where they live, how you met, My read (never written by AI) | Works | |
 | Relationships between two people, or a person and a name | Works | |
 | Upcoming birthdays on Today | Works | |
@@ -47,12 +58,12 @@ What changed shape, and works:
 | Follow-ups: I owe, Waiting on, Suggestions. Suggestions never become tasks until chosen | Works | `show_follow_ups` draws a card. |
 | Create follow-up makes exactly one Ri task, even on retry | Works | Through `ri__create_task` with People's operation id, which Ri keeps per app. |
 | Pipelines: optional, named stages with stable ids, opportunities on people or companies, append-only history, integer minor-unit values with explicit currency, board and list, Move to stage menu | Works | |
-| Sources: account access, automatic updates, history range, coverage, imports, Extract switch, identity review, excluded senders, collections, export | Works differently | In People's own page only (see the first gap). "Account access" is no longer People's: which accounts People may read is chosen on People's page in Ri (the hub's consent). "Automatic updates" was Ri's per-grant switch: People's job updates every lent account, and Pause per account stays in Sources. "Connect email and calendar" sends you to People's Settings, where "Your accounts through Ri" connects the hub. |
+| Sources: account access, automatic updates, history range, coverage, imports, Extract switch, identity review, excluded senders, collections, export | Works differently | In People's own page, and inside a host for a connection with every source: its tools are view-only and the view acts as the owner (verified in the test host; real hosts pending). A connection limited to some sources gets "sees only part of People" and Open in browser. "Account access" is no longer People's: which accounts People may read is chosen on People's page in Ri (the hub's consent). "Automatic updates" was Ri's per-grant switch: People's job updates every lent account, and Pause per account stays in Sources. "Connect email and calendar" leads to People's Settings, where "Your accounts through Ri" connects the hub; inside a host it opens Settings in the browser. |
 | Add view and Hide view only change navigation | Works | |
-| Welcome screen for a new owner with three ways in | Works differently | Same screen. "Connect" opens People's Sources; connecting accounts is in People's Settings (the kit's hub connection), not Ri's Sources. |
-| Ask Ri buttons (on a person, company, opportunity) staging an editable chat draft | Can't work | The kit's view client can't stage a chat message (MCP Apps offers `ui/message`, which sends rather than stages, and the kit doesn't expose it). The buttons are hidden. Needs the kit's client to expose a message call, and Ri to stage rather than send. |
-| Downloads from the view (export CSV and JSON) | Works differently | In People's own page the export downloads as before. Inside a chat the view says to open People in the browser: the kit's client has no download call (Ri's host had one). The kit's Settings also has "Download my data", which includes People's export (format version 2). |
-| Opening links and directions from the view | Works differently | In the browser they open. Inside a chat they can't: the kit's client doesn't expose MCP Apps `ui/open-link`. |
+| Welcome screen for a new owner with three ways in | Works differently | Same screen. "Connect" opens People's Sources; connecting accounts is in People's Settings (the kit's hub connection), not Ri's Sources, and inside a host that opens in the browser. |
+| Ask Ri buttons (on a person, company, opportunity) staging an editable chat draft | Works in hosts | The kit's `AskInChat`: a draft in the chat (`ui/message` with `openai/message` `send: false`) in a host that drafts, as Ri does; the question to copy in one that doesn't; nothing in the browser, where there's no chat. Verified in the test host (draft never sent, and the copy fallback); real hosts pending. |
+| Downloads from the view (export CSV and JSON) | Works in hosts that save files | In the browser, a download. Inside a host with `ui/download-file`, the file goes to the host embedded (verified in the test host; real hosts pending). Ri's host doesn't have it until dynamismlabs/ri#2 merges, so there the view says to use Open in browser. The kit's Settings also has "Download my data", which includes People's export (format version 2). |
+| Opening links and directions from the view | Works in hosts | Through the host's `ui/open-link` (`client.openLink`); where a host can't or refuses, the address shows to copy. People's screens open few links; Open in browser is the main one and is verified in the test host; real hosts pending. |
 | The view in Ri's dark mode and at every width | Works differently | Inside an assistant the kit puts the host's theme on `<html data-theme>`, which People's styles already follow. People's own page in the browser is always light (nothing sets the theme there). Not checked inside a real host, and not screenshot-tested at every width any more (the Ri packaging test is gone, see Tests). |
 
 ## Inputs
@@ -63,7 +74,7 @@ What changed shape, and works:
 | Sent mail, confirmed direct replies and small meetings create people. Bulk, list and no-reply mail is left out by headers first | Works | Same rules on the full messages. |
 | Google Calendar: meetings with participants, organizer, recurrence, time zone, cancellations | Works differently | Through `google_calendar__sync_events` and `google_calendar__list_calendars` by name. The kit's calendar capability (`calendar().listEvents`) and Ri's `list_events` have no attendees, organizer, recurrence or sync token, so People can't use them. |
 | Meetings with you plus at most eight others create people, larger events are counted, events never imply attendance | Works | |
-| CSV, vCard 2.1 to 4.0 and LinkedIn export: previewed before apply, unmapped columns kept, unambiguous birthdays only, imported details never overwrite yours | Works | File choice works in the browser and inside a chat (a file input). Files up to 512 KiB and 5,000 rows. |
+| CSV, vCard 2.1 to 4.0 and LinkedIn export: previewed before apply, unmapped columns kept, unambiguous birthdays only, imported details never overwrite yours | Works | In the browser, and inside a host: a file input in the sandboxed frame, then the preview and Import (verified in the test host; real hosts pending, each host decides whether its frame may pick files). Files up to 512 KiB and 5,000 rows. |
 | Ri tasks for follow-ups, one per follow-up, Ri owns status | Works | `ri__create_task` and `ri__get_task`. Ri treats them as the person's own data, so no approval is asked. |
 | Ri bounded AI (`ai_text`), off until enabled, separate from sync, no call anywhere when off | Works | `ri__ai_text` on the hub. A test checks no call happens with it off. |
 | `extract_text` | Works | Requested on the hub as `ri__extract_text`. People's current code doesn't call it (the old app asked for it too). |
@@ -100,9 +111,9 @@ All work, unchanged, with their tests: email normalization (trim, lower-case onl
 | An opportunity is visible only when both it and its pipeline are | Works | |
 | Search never indexes a private company name under a shared source; old rows rebuilt once at startup | Works | |
 | Personal details and relationships shown only to readers of their collection | Works | |
-| Owner-only actions (sources, imports, export, merges, identity review, delete, navigation, pipeline structure, exclusions, collections) | Works differently | Only in People's own page in your browser. Inside Ri's view of People they're unavailable (first gap above). A connection with every source and write access still isn't the owner. |
+| Owner-only actions (sources, imports, export, merges, identity review, delete, navigation, pipeline structure, exclusions, collections) | Works in hosts | View-only tools (MCP Apps `visibility: ["app"]`): the host keeps them from the model and refuses the model's call, and the view's call acts as the owner when the connection was given every source. Writes still need a connection that may write. A limited connection is refused ("sees only part of People"). It's the host's rule: Ri enforces it, and a host that ignores it would let its model call them. Verified in the test host (model refused, view allowed, limited connection refused); real hosts pending. |
 | Only the owner uses People | Works differently | People is one person's relationships. On a signed-in installation, other accounts are refused. |
-| Export: CSV and JSON with stable ids and a format version, never message bodies, not a full backup | Works | From Sources in the browser, and in the kit's "Download my data". |
+| Export: CSV and JSON with stable ids and a format version, never message bodies, not a full backup | Works | From Sources, in the browser or a host that saves files, and in the kit's "Download my data". |
 | Delete imported data keeps your notes and decisions | Works | |
 
 ## Limits
@@ -113,12 +124,12 @@ All unchanged and enforced by the same code: lists 50 by default and at most 100
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| People's actions available to chats | Works | 40 of People's actions are MCP tools, plus `get_record_title`, the four cards and `open_people` (46 in all), each with an output schema. Owner-only ones aren't (above). |
-| The People view opened in Ri (`open_view`, entry points global and thread) | Works differently | `open_people` (added by the kit) opens the whole app full screen. `open_view` stays as the data the screens load. |
+| People's actions available to chats | Works | 69 MCP tools, each with an output schema: 44 the model sees (People's actions, the four cards and `open_people`) and 25 view-only (the person's own work, `open_view`, `get_record_title` and the kit's `search_mentions`). |
+| The People view opened in Ri (`open_view`, entry points global and thread) | Works differently | `open_people` (added by the kit) opens the whole app full screen, at a path when given (`/people/<id>`, `/companies/<id>`, `/opportunities/<id>` or a section), and the open app follows host links. `open_view` stays as the data the screens load, now view-only. Verified in the test host; real hosts pending. |
 | Cards in a chat | Works, new | `show_people`, `show_person`, `show_follow_ups` and `show_today`. Ri drew only the whole view. |
-| View context: section, filters and up to 50 selected records, re-resolved for the receiving chat (`describe_view_context`) | Works differently | The kit sends one selected record's id and title (its bounded selection). `get_record_title` gives the title only for records the connection may see. `describe_view_context` remains a tool an assistant can call. Needs a richer selection in the kit, or Ri calling `describe_view_context`, to match. |
-| Record types with read actions and paths, so Ri could link to a person, company or opportunity | Can't work | MCP has no record registry or deep links into an app. A card opens the whole app at a record in the same frame. Needs an entry point with a path in the kit and Ri (MCP Apps has none today). |
-| Skills: prepare for a meeting, remember about someone, review follow-ups | Can't work as skills | An MCP server can't ship skills, and the kit has no MCP prompts. Their rules are in the tool descriptions. Needs MCP prompts in the kit (and Ri to offer them), or Ri loading skills from an app's repository. The skills are kept in `legacy/skills`. |
+| View context: section, filters and up to 50 selected records, re-resolved for the receiving chat (`describe_view_context`) | Works in hosts | The kit's bounded context: the section, its path, its filters by name, the open record and up to 50 selected records with the total. Names come from `get_record_title`, only for records the connection may see. The assistant reads the records themselves with its own access. `describe_view_context` remains a tool. Verified in the test host; real hosts pending. |
+| Record types with read actions and paths, so Ri could link to a person, company or opportunity | Works in hosts | People declares its records: `open_people` opens one by path, the host's @ menu finds people and companies (`search_mentions`, view-only) and reads one as markdown (`app://people/people/<id>`), filtered by the connection's sources. Verified in the test host and over MCP; real hosts pending. |
+| Skills: prepare for a meeting, remember about someone, review follow-ups | Can't work as skills | An MCP server can't ship skills, and the kit has no MCP prompts (K10). Their rules are in the tool descriptions. Needs MCP prompts in the kit (and Ri to offer them), or Ri loading skills from an app's repository. The skills are kept in `legacy/skills`. |
 | Approval policy on the app's own tools | Works | Ri's connected-app host applies it, as for any MCP server. |
 
 ## Data and running
@@ -142,8 +153,9 @@ Every old test file is ported and passes through the kit's adapter, except the p
 | briefing-text, capture, extraction, followups, identity, imports, merge, performance, personal, pipelines, preview, profiles, review-leaks, scopes, sync | Pass. Each call goes through People's kit action as the kit runs it: your browser, a connection with its recorded choice (made with the kit's `createTestConnection`), or the job. Hub calls go to a fake hub that answers with Ri's tool names, `account` argument, choose-account answer and errors as the kit's client reports them. |
 | contract | Rewritten for the kit: every action converted, examples still parse, audiences, MCP tools are exactly the agent actions plus the views and `open_people`, every tool has an output schema, job and connectors in the contract. |
 | release | Passes. Its two restores use a database copy. A new expected-failure test records the kit backup gap: it starts failing (as unexpectedly passing) when the kit fixes it. |
-| view.packaged (Ri packaging, AppEngine, screenshots at widths and dark mode) | Removed with Ri's app engine. Replaced by a browser check of the preview (Today, directory, a person) and `test/kit.test.ts` for the view tools and resource. Width and dark-mode screenshots aren't automated any more. |
-| New: kit | The job finding accounts (several by name, one by address), duplicate wake-ups, a hub that's down or revoked, MCP with tokens and per-connection sources, the cards, the view's empty network policy, and the kit's own fixture source. |
+| view.packaged (Ri packaging, AppEngine, screenshots at widths and dark mode) | Removed with Ri's app engine. Replaced by `test/people.browser.spec.ts` (`pnpm test:host`), which drives the whole view in the kit's strict MCP Apps test host, and `test/kit.test.ts` for the view tools and resource. Width and dark-mode screenshots aren't automated any more (the test host is light only). |
+| New: kit | The job finding accounts (several by name, one by address), duplicate wake-ups, a hub that's down or revoked, MCP with tokens and per-connection sources, the cards, the view's empty network policy, view-only tools acting as the owner only for a connection with every source, the @ menu and record reads by connection, `open_people` at a path, and the kit's own fixture source. |
+| New: people.browser.spec (strict test host) | Opening at a person, Open in browser, Ask Ri as a draft, a host link moving the app, archiving and importing a file from the view, export through the host, filters and a bulk selection in the context, a card opening the app at one person, a host without drafts, links or files, and a connection limited to one collection. The view reached nothing on the network. One export click is dispatched to the button, since the test host doesn't deliver real clicks to the bottom band of a full-screen frame (K12). |
 
 ## Gaps in the kit
 
@@ -152,31 +164,41 @@ Every old test file is ported and passes through the kit's adapter, except the p
 - **K3. The capability shapes are too thin for People, and the fixture source can't stand in for pass-through tools.** `MailMessage` has no list or reply headers; `CalendarEvent` has no attendees, organizer, recurrence or time zones; neither has an incremental cursor. People passes Ri's tools through by name. The fixture source answers a pass-through tool with one fixed result whatever the arguments, so People's mail and calendar sync can't run under `APP_CONNECTORS=fixtures` (the job leaves the account waiting with the reason). People's tests use their own fake hub with Ri's tool shapes. Adding headers and attendees to the capability shapes, or letting fixtures answer by arguments, would close this.
 - **K4. No way to know which accounts the hub lent.** `connectors(ctx).tools()` returns names only, and a call without `account` when several are lent becomes a `SetupRequired` whose message lists them. People reads the list from that message, and for one account asks `gmail__get_profile` and the primary calendar. It works with Ri as built but depends on message wording. The kit should return each tool's allowed accounts (from the `account` parameter's description or a structured answer).
 - **K5. Pass-through errors lose their code.** The kit's client turns a hub error into a plain `Error` with the message, dropping `code`. People needs "not found" (expired history, deleted message, expired sync token) and "unsupported" (AI unavailable), and reads them from the message.
-- **K6. No app-only tools.** Tools the view needs but the model shouldn't call (People's owner-only actions) can't be declared. MCP Apps has `visibility: ["app"]`, but only the host can enforce it, so Ri would need to as well.
-- **K7. The view client lacks host calls.** No message (Ask Ri), open link or download.
-- **K8. The selection is one record.** Ri got the section, filters and up to 50 selected records.
 - **K9. Connection choices keep sources that were deleted.** People filters them out itself; the kit could drop them when an app says a source is gone.
 - **K10. No MCP prompts**, so apps can't offer skills-like workflows.
-- **K11. No upgrade command on `main` yet.** See "Kit version" below.
+- **K12. The kit's test host misses clicks at the bottom of a full-screen frame.** In `browser-host.ts` with Chrome, a real mouse click about 80 px from the bottom of a sandboxed frame made full screen doesn't reach the frame at all (no pointer events inside it), while clicks above it do. People's test dispatches its one click there. Worth checking whether real Chromium hosts (Ri's desktop app) behave the same.
+- **The test host isn't in the core package.** `packages/core/test/browser-host.ts` and the OAuth helper are copied into `test/host/`; shipping them (or a `testHost()` export) would keep apps' host tests in step with the kit's.
+
+Closed by core 0.2.2 (kit `main` `1713f6a`):
+- **K6. App-only tools:** `visibility: ["app"]`, enforced by Ri.
+- **K7. Host calls in the view client:** drafts, links, files, Open in browser.
+- **K8. The selection was one record:** now section, path, filters and up to 50 records.
+- **Record links:** `open_<app>` at a path, host deep links and the @ menu.
+- **K11. Upgrades:** `upgrade --core` moved People from 0.2.0 to 0.2.2, with refresh-token rotation.
 
 ## Gaps in Ri
 
 - **R1. Account identity across Gmail and Calendar.** With one account lent, Ri's tools have no account name, so People uses the Gmail address and the primary calendar's id. With several, People uses Ri's allowed names (an address or a label). If Ri names a connection by label, one Google account's mail and calendar can end up as two sources in People. Ri should give each lent account a stable id, the same across its tools, and a way to list them (K4).
 - **R2. `ri__ai_text` needs the Claude harness.** Otherwise extraction, briefings and profiles show as unavailable, as they did in Ri.
 - **R3. Ri doesn't run apps any more.** People must be installed as a service (`serve --install`) before Ri can connect it.
-- **R4. Not checked against Ri itself.** OAuth from Ri's client, Ri's hub consent with these tools, and Ri's view host were not run (a later session checks every ported app in Ri).
+- **R4. Not checked against Ri itself.** OAuth from Ri's client, Ri's hub consent with these tools, and Ri's view host were not run (a later session checks every ported app in Ri, ChatGPT and Claude).
+- **R5. No `ui/download-file` in Ri's host yet** (dynamismlabs/ri#2). Until it merges, People's export inside Ri says to use Open in browser.
+- **R6. Visibility must stay enforced.** People's owner work inside a host relies on Ri keeping view-only tools from its model and refusing the model's calls to them.
 
 ## Kit version
 
-Built from kit `main` at `bc2c7f4` (core 0.2.0, vendored in `vendor/`). Before finishing, `origin/main` was still `bc2c7f4`:
-- The refresh-token fix (rotate refresh tokens, revoke a connection when one is reused) is on the kit's `claude/refresh-token-rotation` branch, not on `main`. People doesn't have it.
-- There's no upgrade command on `main` (it's on the kit's `claude/app-commands` branch). Until it lands, taking a kit fix means replacing `vendor/app-builder-core-*.tgz` and the lockfile by hand, then `change`.
+Core 0.2.2 from kit `main` `1713f6a`, vendored in `vendor/`. The kit's own `upgrade --core ~/dynamism/app-builder --json` moved People from 0.2.0 (run from the kit checkout's CLI, since 0.2.0 predates `upgrade`): core, prepare (new tarball, lockfile, build skill, migrations core-0007 to core-0009), typecheck and test in a separate worktree, then a fast-forward merge. People isn't installed as a service, so nothing switched. Because People isn't installed, the kit wrote that upgrade's log under the default data directory (`~/.local/share/people/releases/`), which holds nothing else.
 
 ## Evidence
 
-- `pnpm typecheck`, `pnpm build` and `pnpm test` pass: 18 files, 122 tests, and 1 expected failure (the kit backup gap, K2). The build writes 46 MCP tools to `dist/contract.json`.
+November 16, core 0.2.2:
+- `pnpm typecheck`, `pnpm build` and `pnpm test` pass: 18 files, 125 tests, and 1 expected failure (the kit backup gap, K2). The build writes 69 MCP tools to `dist/contract.json`, 25 of them view-only.
+- `pnpm test:host`: 3 tests pass in the kit's strict MCP Apps test host, with Chrome, one worker and a disposable preview server that Playwright stops.
+
+November 12, core 0.2.0:
+- `pnpm typecheck`, `pnpm build` and `pnpm test` passed: 18 files, 122 tests, and 1 expected failure. The build wrote 46 MCP tools.
 - `pnpm exec app-builder serve --install --service process` with a disposable `APP_DATA_DIR` ran resolve, copy, install, typecheck, test, build, rehearse, stop, snapshot and switch, and `/api/health` answered with the new release. (Its first try refused to switch because a test that depended on two records saved in the same millisecond failed in the copy; fixed.) Then `change --json` switched the running app to a later commit with its records kept. No launchd service was installed.
 - `scripts/oauth-check.mjs`, a standard MCP client (`@modelcontextprotocol/sdk` 1.32.2), against that running app: 401 with `resource_metadata`, dynamic registration, PKCE S256, People's consent screen in a browser with no sign-in (chose only the "Work" collection and read-only), token with a refresh token, 46 tools; `list_people` returned only the Work person, `show_today` drew its card, and `capture_about_person` was refused: "Ri · Work can read but not make changes."
 - A browser check of `pnpm preview`'s fictional world: Today, the directory and a person's page render on the kit's client.
 - Hub features are tested two ways: against a fake hub with Ri's tool names and shapes (`test/helpers.ts`), and against the kit's own fixture source (`test/kit.test.ts`), which drives Ri's task services and shows where it can't drive People's sync (K3).
-- Not run: Ri itself (its client, its hub's consent, its view host), Claude or ChatGPT, a real Gmail or Calendar account, and People's full view inside an MCP Apps host.
+- Not run: Ri itself (its client, its hub's consent, its view host), Claude or ChatGPT, and a real Gmail or Calendar account.

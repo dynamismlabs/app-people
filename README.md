@@ -15,7 +15,7 @@ It runs on your Mac as its own app with its own data, and any assistant can use 
 - **The living profile** is a short cited summary rewritten from the previous one plus whatever arrived since. It needs Extract relationship context, never reads My read and never guesses private traits.
 - **Capture from chat**: tell an assistant "met Sarah at dinner, she is raising a seed round" and it lands on Sarah as a note in your words.
 - **Companies**, **Follow-ups** (I owe, Waiting on, Suggestions, one Ri task per follow-up) and optional **Pipelines**.
-- **Sources** keeps account updates, history range, coverage, imports, the Extract switch, identity review, excluded senders, collections and export together. It's in People's own page in your browser.
+- **Sources** keeps account updates, history range, coverage, imports, the Extract switch, identity review, excluded senders, collections and export together.
 
 ## In an assistant
 
@@ -23,9 +23,9 @@ Add `http://127.0.0.1:<port>/mcp` as an MCP server. Each assistant connection (e
 
 - Data tools: People's actions, such as `search_people`, `get_person`, `get_relationship_context`, `capture_about_person`, `list_commitments` and `create_follow_up`.
 - Cards: `show_people`, `show_person`, `show_follow_ups` and `show_today`.
-- `open_people` opens the whole app.
+- `open_people` opens the whole app, at a path when given.
 
-Sources, imports, export, merges and deleting records are only in People's own page.
+The whole app works inside a host that supports MCP Apps: `open_people` can open at a person (`/people/<id>`), people and companies are in the host's @ menu, and **Open in browser** is always in the header. Sources, imports, export, merges and deleting records are view-only there: the host keeps them from the model, and only a connection given every source may use them.
 
 ## Your accounts
 
