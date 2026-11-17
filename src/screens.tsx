@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Routes, Route } from "react-router";
+import { Link, Routes, Route, useNavigate } from "react-router";
 import { useAppClient, ConnectionSettings, ConsentScreen, OpenInBrowser, ViewCard } from "@app-builder/core/react";
 import { AppFrame, RiAppProvider, installStyles } from "./people/view/kit/index.js";
 import { PeopleApp } from "./people/view/app.js";
@@ -16,11 +16,15 @@ function openInApp(client: ReturnType<typeof useAppClient>, path: string) {
 
 export function PeopleScreen() {
   const client = useAppClient();
+  const navigate = useNavigate();
   useEffect(() => { installStyles(peopleCss); }, []);
+  // Inside a host, Settings is the core's screen in the same frame (its view-only read_settings and
+  // change_settings tools), reached through the view's router.
+  const openSettings = client.embedded ? () => navigate("/settings") : undefined;
   return <>
-    {/* In the browser, Settings. Inside a host, the way out: Open in browser, at the place the person is in. */}
-    <nav className="people-top" aria-label="App">{client.embedded ? <OpenInBrowser /> : <a href="/settings">Settings</a>}</nav>
-    <RiAppProvider><AppFrame><PeopleApp /></AppFrame></RiAppProvider>
+    {/* Settings, in the browser and inside a host. Inside a host also the way out: Open in browser, at the place the person is in. */}
+    <nav className="people-top" aria-label="App">{client.embedded ? <><OpenInBrowser /><Link to="/settings">Settings</Link></> : <a href="/settings">Settings</a>}</nav>
+    <RiAppProvider openSettings={openSettings}><AppFrame><PeopleApp /></AppFrame></RiAppProvider>
   </>;
 }
 

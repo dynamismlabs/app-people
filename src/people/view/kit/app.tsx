@@ -169,12 +169,16 @@ export interface RiAppProviderProps {
   children?: ReactNode;
   /** Where the view starts. Defaults to the page's own address, or `/` inside an assistant. */
   initialPath?: string;
+  /** Inside an assistant: open the core's Settings in the same frame. Without it, Settings opens in the browser. */
+  openSettings?: () => void;
 }
 
-export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
+export function RiAppProvider({ children, initialPath, openSettings }: RiAppProviderProps) {
   useInsertionEffect(() => { installStyles(); }, []);
   const client = useAppClient();
   const embedded = client.embedded;
+  const settingsRef = useRef(openSettings);
+  settingsRef.current = openSettings;
   const [data, setData] = useState<unknown>(undefined);
   const [revision, setRevision] = useState(0);
   const [theme, setTheme] = useState<Theme>(currentTheme);
@@ -291,6 +295,7 @@ export function RiAppProvider({ children, initialPath }: RiAppProviderProps) {
     manageAccess: async () => {
       // Which accounts People reads is chosen in Ri; connecting People to Ri is in People's Settings.
       if (!embedded) { window.location.assign("/settings"); return; }
+      if (settingsRef.current) { settingsRef.current(); return; }
       if (!(await clientRef.current.openInBrowser("/settings"))) {
         const address = clientRef.current.browserURL("/settings");
         throw new Error(address ? `Open People's Settings in your browser: ${address}` : "Choose which accounts People may read on People's page in Ri.");

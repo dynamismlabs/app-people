@@ -57,11 +57,14 @@ describe('contract', () => {
     const expected = [
       ...application.actions.filter((action) => action.audience.includes('agent')).map((action) => action.name),
       ...(application.views ?? []).map((view) => view.name), 'open_people', 'search_mentions',
+      // Settings inside the view: the core's own view-only tools.
+      'read_settings', 'change_settings',
     ].sort();
     expect(names).toEqual(expected);
     const viewOnly = tools.filter((tool) => (tool as { _meta?: { ui?: { visibility?: string[] } } })._meta?.ui?.visibility?.join() === 'app').map((tool) => tool.name).sort();
     expect(viewOnly).toContain('delete_record');
     expect(viewOnly).toContain('search_mentions');
+    expect(viewOnly).toEqual(expect.arrayContaining(['read_settings', 'change_settings']));
     expect(viewOnly).not.toContain('search_people');
     for (const tool of tools) {
       expect(tool.outputSchema, tool.name).toBeTruthy();

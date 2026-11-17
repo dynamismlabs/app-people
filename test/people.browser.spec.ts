@@ -153,6 +153,59 @@ test("the whole of People inside a host: open at a person, the person's own work
   } finally { await host.close(); }
 });
 
+test("Settings inside the host: from the header and from Sources, connections listed and removed, and back to People", async ({ page }) => {
+  await seeded(page);
+  await oauthToken(origin, { name: "Another assistant" });
+  const host = await openHost(page);
+  const { view } = host;
+  try {
+    // The core's Settings tools are the view's: the model never sees them, and the host refuses its call.
+    expect(await host.modelTools()).not.toContain("read_settings");
+    expect(await host.modelTools()).not.toContain("change_settings");
+    expect((await host.call("read_settings")).isError).toBe(true);
+    const maya = (await host.call("search_people", { text: "Maya", limit: 5 })).structuredContent!.result.items[0] as { id: string };
+    await host.mount("open_people", { path: `/people/${maya.id}` });
+    await expect.poll(host.displayMode).toBe("fullscreen");
+    await expect(view.getByRole("article", { name: "Maya Chen" })).toBeVisible();
+
+    // The header's Settings opens the core's Settings in the same frame.
+    await view.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Settings", exact: true }).click();
+    await expect(view.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    const rows = view.locator(".connection-row");
+    await expect(rows.filter({ hasText: "Qualification host (this one)" })).toHaveCount(1);
+    await expect(rows.filter({ hasText: "Another assistant" })).toHaveCount(1);
+    await expect(view.locator(".job-row").filter({ hasText: "Update from your accounts" })).toHaveCount(1);
+    // Another connection goes at once; the view's own asks first.
+    await rows.filter({ hasText: "Another assistant" }).getByRole("button", { name: "Disconnect" }).click();
+    await expect(view.getByText("Connection removed.")).toBeVisible();
+    await expect(rows.filter({ hasText: "Another assistant" })).toHaveCount(0);
+    await rows.filter({ hasText: "(this one)" }).getByRole("button", { name: "Disconnect" }).click();
+    await expect(view.getByText("This view uses it, so the app stops working here.")).toBeVisible();
+    await view.getByRole("button", { name: "Keep it" }).click();
+    await expect(rows.filter({ hasText: "(this one)" })).toHaveCount(1);
+    // The account and downloads are in the browser.
+    await view.getByRole("button", { name: "Open Settings in the browser" }).first().click();
+    await expect.poll(async () => (await host.asked()).links).toContain(origin + "/settings");
+
+    // Back to People, within the frame, at its start.
+    await view.getByRole("button", { name: "← Back to People" }).click();
+    await expect(view.getByRole("tab", { name: "Today" })).toBeVisible();
+    await expect(view.getByRole("heading", { name: "Settings", exact: true })).toHaveCount(0);
+
+    // Sources' Connect an account opens the same Settings, where Ri is connected, instead of the browser.
+    await view.getByRole("tab", { name: "Sources" }).click();
+    await view.getByRole("button", { name: "Connect an account" }).first().click();
+    await expect(view.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+    expect((await host.asked()).links).toEqual([origin + "/settings"]);
+
+    // A host link from Settings moves the router back to People, at that person.
+    await host.deepLink(`/people/${maya.id}`);
+    await expect(view.getByRole("article", { name: "Maya Chen" })).toBeVisible();
+    await expect(view.getByRole("heading", { name: "Settings", exact: true })).toHaveCount(0);
+    expect(host.failures).toEqual([]);
+  } finally { await host.close(); }
+});
+
 test("in a host without drafts, links or files, nothing is sent and People offers what it can", async ({ page }) => {
   await seeded(page);
   const host = await openHost(page);
@@ -184,6 +237,10 @@ test("a connection limited to some sources sees only those, and not the person's
     expect(names).not.toContain("Maya Chen");
     await view.getByRole("tab", { name: "Sources" }).click();
     await expect(view.getByText(/sees only part of People/)).toBeVisible();
+    // Settings would show what other connections may see, so a limited one is sent to the browser.
+    await view.getByRole("navigation", { name: "App" }).getByRole("link", { name: "Settings", exact: true }).click();
+    await expect(view.getByText("This connection sees only some of your records, so Settings aren’t shown here.")).toBeVisible();
+    await expect(view.locator(".connection-row")).toHaveCount(0);
     expect(host.failures).toEqual([]);
   } finally { await host.close(); }
 });
