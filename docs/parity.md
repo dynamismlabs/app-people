@@ -7,7 +7,7 @@ People ran inside Ri as an included app (`apps/people` at Ri commit `3c442810`, 
 - **Works in hosts**: was browser-only or missing inside a chat, and now works inside a host's view too.
 - **Can't work**: not possible on the new path today, with why and what would have to change in the kit or in Ri.
 
-Lines about People's view inside an assistant say what each host did. Ri was checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac, on the web (headless Chromium) and in Ri's desktop app (source Electron), with dummy records only. It was not Trey's own Ri, which runs on another computer. ChatGPT and Claude are still pending. The results are in [Real hosts](#real-hosts), with screenshots in `docs/parity/`.
+Lines about People's view inside an assistant say what each host did. Ri was checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac, on the web (headless Chromium) and in Ri's desktop app (source Electron), with dummy records only. It was not a Ri Home in everyday use, which runs on another computer. ChatGPT and Claude are still pending. The results are in [Real hosts](#real-hosts), with screenshots in `docs/parity/`.
 
 First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"). Ri's hub was read from its code; Ri itself wasn't run.
 
@@ -181,7 +181,7 @@ Closed by core 0.2.2 (kit `main` `1713f6a`):
 - **R1. Account identity across Gmail and Calendar.** With one account lent, Ri's tools have no account name, so People uses the Gmail address and the primary calendar's id. With several, People uses Ri's allowed names (an address or a label). If Ri names a connection by label, one Google account's mail and calendar can end up as two sources in People. Ri should give each lent account a stable id, the same across its tools, and a way to list them (K4).
 - **R2. `ri__ai_text` needs the Claude harness.** Otherwise extraction, briefings and profiles show as unavailable, as they did in Ri.
 - **R3. Ri doesn't run apps any more.** People must be installed as a service (`serve --install`) before Ri can connect it.
-- **R4. Checked against a disposable Ri, not Trey's own.** OAuth from Ri's client and Ri's view host ran in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's hub consent with People's tools and a real Gmail account were not run.
+- **R4. Checked against a disposable Ri, not one in everyday use.** OAuth from Ri's client and Ri's view host ran in a disposable Ri at f55cdf96 ([Real hosts](#real-hosts)). Ri's hub consent with People's tools and a real Gmail account were not run.
 - **R5. Downloads in Ri.** Fixed by dynamismlabs/ri#2: export inside Ri saves through Ri's card.
 - **R6. Visibility must stay enforced.** People's owner work inside a host relies on Ri keeping view-only tools from its model and refusing the model's calls to them.
 
@@ -192,7 +192,7 @@ Closed by core 0.2.2 (kit `main` `1713f6a`):
 
 ## Real hosts
 
-Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** (Ri's current `main`) on this Mac, with dummy records, not Trey's own Ri. People ran as the installed service at `http://127.0.0.1:4311` (release 5ff66bd). Ri connected it through People's consent screen ("Connect Ri to People?", all sources, changes allowed). Full-screen checks used **Add MCP server**, because Ri's Add app path can't open screens yet (R8). Screenshots: `docs/parity/ri-*.png`.
+Checked on November 16, 2026. "Ri" is a **disposable Ri at f55cdf96** (Ri's current `main`) on this Mac, with dummy records, not a Ri Home in everyday use. People ran as the installed service at `http://127.0.0.1:4311` (release 5ff66bd). Ri connected it through People's consent screen ("Connect Ri to People?", all sources, changes allowed). Full-screen checks used **Add MCP server**, because Ri's Add app path can't open screens yet (R8). Screenshots: `docs/parity/ri-*.png`.
 
 | Check | Ri on the web | Ri's desktop app | ChatGPT | Claude |
 | --- | --- | --- | --- | --- |
