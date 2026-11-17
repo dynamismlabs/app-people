@@ -82,7 +82,9 @@ describe('the job in place of Ri\'s schedule', () => {
 
   it('a duplicate wake-up for the same five minutes does nothing', async () => {
     state.platform!.connectors = hubSource(world().capability, BOTH);
-    const at = Date.now();
+    // A minute into a five-minute slot, so a second after the next wake-up is still its slot.
+    // From Date.now() alone, about one run in 300 crossed into the slot after.
+    const at = Math.floor(Date.now() / 300_000) * 300_000 + 60_000;
     await runDueJobs(application, state.platform!, { now: () => at });
     const first = await runDueJobs(application, state.platform!, { now: () => at + 5 * 60_000 });
     const again = await runDueJobs(application, state.platform!, { now: () => at + 5 * 60_000 + 1000 });
