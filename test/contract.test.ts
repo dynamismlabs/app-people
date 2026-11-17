@@ -75,6 +75,12 @@ describe('contract', () => {
     expect(contract.connectors?.capabilities).toEqual(['mail.read', 'calendar.read']);
   });
 
+  it('every read is synchronous, so each runs as one transaction of the core\'s (src/people/kit.ts)', () => {
+    const reads = definition.actions.filter((action) => action.effect === 'read');
+    expect(reads.length).toBeGreaterThan(20);
+    expect(reads.filter((action) => action.handler.constructor.name === 'AsyncFunction').map((action) => action.name)).toEqual([]);
+  });
+
   it('no tool takes an input named account, which Ri reserves and refuses a server for', () => {
     const contract = actionContract({ ...application, viewHTML: '<!doctype html>' });
     const tools = contract.mcp.tools as { name: string; inputSchema?: { properties?: Record<string, unknown>; anyOf?: { properties?: Record<string, unknown> }[] } }[];

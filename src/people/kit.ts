@@ -18,10 +18,11 @@ import { z } from 'zod/v3';
 import { TRPCError } from '@trpc/server';
 import { SetupRequired, SourceUnavailable, defineAction, defineView, type Action, type Context, type Job, type RecordLink, type Records, type Sources, type View } from '@app-builder/core';
 import { defineJob } from '@app-builder/core';
-import { AppError } from '../lib/contract.js';
+import { AppError, type AppInvocation } from '../lib/contract.js';
 import { accountSource } from '../lib/data.js';
 import { actions as peopleActions } from './actions.js';
 import type { ActionDefinition } from './actions/shared.js';
+import type { Ctx } from './domain/context.js';
 import { Labels } from './domain/coverage.js';
 import { canSeeOpportunity, MANUAL } from './domain/scope.js';
 import { organizationRef, organizationVisible, personNameById, personVisible } from './domain/projection.js';
@@ -76,6 +77,19 @@ function objectInput(definition: ActionDefinition<any, any>): z.AnyZodObject {
   throw new Error(`${definition.name} needs an object input`);
 }
 
+/**
+ * Run one of People's handlers. A read whose handler is synchronous runs as one of the core's
+ * transactions: its statements see one state of the records and share one BEGIN and COMMIT,
+ * instead of each being a transaction of its own. Writes keep their own transactions (the write
+ * receipt's and the domain's), and a handler that waits on the hub or Ri's AI can't hold one open.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function invoke(c: Ctx, definition: ActionDefinition<any, any>, raw: unknown, invocation: AppInvocation) {
+  const input = definition.input.parse(raw);
+  if (definition.effect === 'read' && definition.handler.constructor.name !== 'AsyncFunction') return c.db.tx(() => definition.handler(input, invocation));
+  return definition.handler(input, invocation);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function fromPeople(definition: ActionDefinition<any, any>): Action {
   const input = objectInput(definition);
@@ -93,7 +107,7 @@ export function fromPeople(definition: ActionDefinition<any, any>): Action {
       const { requestId: id, ...rest } = raw as Record<string, unknown> & { requestId?: string };
       const viewOnly = VIEW_ONLY.has(definition.name);
       if (FRESH_ACCOUNTS.has(definition.name) && (!kit.connection || kit.connection.sources === null) && !kit.job && !previewMode()) await freshAccounts(kit);
-      try { return await withInvocation(kit, { requestId: id, viewOnly }, (invocation) => definition.handler(definition.input.parse(rest), invocation)); }
+      try { return await withInvocation(kit, { requestId: id, viewOnly }, (invocation, c) => invoke(c, definition, rest, invocation)); }
       catch (error) { throw kitError(error); }
     },
   });
@@ -117,7 +131,7 @@ const byName = new Map(peopleActions.map((item) => [item.name, item]));
 async function run<T>(kit: Context, name: string, input: Record<string, unknown>): Promise<T> {
   const definition = byName.get(name);
   if (!definition) throw new Error(`Unknown People action ${name}`);
-  return withInvocation(kit, {}, async (invocation) => definition.handler(definition.input.parse(input), invocation) as T);
+  return withInvocation(kit, {}, async (invocation, c) => invoke(c, definition, input, invocation) as T);
 }
 
 // ─── Small actions App Builder needs ─────────────────────────────────────────
