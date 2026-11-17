@@ -29,7 +29,7 @@ People keeps one person's relationships: people, companies, conversations, meeti
 ## Who is calling
 
 - **The person's browser** (no OAuth connection) is the owner: every source and every action.
-- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. Sources that no longer exist are ignored.
+- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. The kit drops a deleted source from every connection's choice before People sees it.
 - **People's view inside a host** calls through that connection. The person's own decisions are view-only (`visibility: ["app"]`): the host keeps them from the model, and the view's call acts as the owner when the connection was given every source. Limited connections stay limited. It's the host's rule (Ri enforces it); a host that ignores visibility would let its model call them, so mark nothing else view-only.
 - **The job** sees the accounts the hub lends.
 
@@ -37,7 +37,7 @@ Only the installation's owner uses People. Other signed-in accounts are refused.
 
 ## The hub
 
-People reads Gmail and Calendar and uses Ri's tasks and AI through the person's hub (Ri), connected once in Settings. It calls Ri's tools by name (`HUB_TOOLS` in `runtime.ts`), because the kit's mail and calendar capabilities don't carry what People needs. Each job run asks the hub which accounts it lends (`refreshHubAccounts`). A missing tool shows as "People hasn't been allowed to …". Tests use `test/helpers.ts`'s fake hub with Ri's shapes; the kit's fixture source can't drive People's sync.
+People reads Gmail and Calendar and uses Ri's tasks and AI through the person's hub (Ri), connected once in Settings. It calls Ri's tools by name (`HUB_TOOLS` in `runtime.ts`), because the kit's mail and calendar capabilities don't carry what People needs. Each job run asks the hub which accounts it lends (`refreshHubAccounts`, reading the kit's structured `choose_account` answer). Hub errors are still told apart by their message until Ri sends `not_found` as a code (dynamismlabs/ri#7). A missing tool shows as "People hasn't been allowed to …". Tests use `test/helpers.ts`'s fake hub with Ri's shapes; the kit's fixture source can't drive People's sync.
 
 ## Rules that must not regress
 
@@ -52,4 +52,4 @@ All of Ri's rules still hold (they're in `legacy/AGENTS.ri.md`), with these chan
 
 ## Hosting
 
-The Mac (the kit's Node target) only. People's synchronous SQLite can't run on D1, so the Worker entry answers 501. Docker works like the Node service. The data directory is `~/.local/share/people` or `APP_DATA_DIR`. The kit's portable `backup`/`restore` can't restore People's full-text index yet (`docs/parity.md`, K2); a stopped copy of `data.sqlite` restores fully.
+The Mac (the kit's Node target) only. People's synchronous SQLite can't run on D1, so the Worker entry answers 501. Docker works like the Node service. The data directory is `~/.local/share/people` or `APP_DATA_DIR`. The kit's portable `backup`/`restore` restores People, full-text index included, and so does a stopped copy of `data.sqlite`.

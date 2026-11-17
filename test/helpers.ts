@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { SetupRequired, SourceUnavailable, type Connection, type Context, type ConnectorSource, type Platform } from '@app-builder/core';
+import { createApp, SetupRequired, SourceUnavailable, type Connection, type Context, type ConnectorSource, type Platform } from '@app-builder/core';
 import { backupNode, createTestConnection, openNodePlatform, restoreNode } from '@app-builder/core/node';
 import { AppError, type AppPrincipal } from '../src/lib/contract.js';
 import { application } from '../src/app.js';
@@ -142,7 +142,8 @@ export function hubSource(capability: Capability, accounts: Grant[]): ConnectorS
       const kind = tool.startsWith('gmail__') ? 'mail' : tool.startsWith('google_calendar__') ? 'calendar' : null;
       const { account: given, ...rest } = args as Record<string, unknown> & { account?: string };
       const choices = kind ? accounts.filter((grant) => grant.binding === kind).map((grant) => grant.account) : [];
-      if (kind && !given && choices.length > 1) throw new SetupRequired(`Choose which account to use (${choices.join(', ')}). Pass account.`);
+      // As the kit reports Ri's choose_account answer: the names, structured.
+      if (kind && !given && choices.length > 1) throw new SetupRequired(`Choose which account to use (${choices.join(', ')}). Pass account.`, { code: 'choose_account', accounts: choices });
       const account = given ?? (kind ? choices[0] : undefined);
       try { return await capability(name, rest, account ? { account } : undefined); }
       catch (error) {
@@ -186,12 +187,25 @@ function kitContext(caller: Caller): Context {
   return base;
 }
 
-/** The connection's current choice, read back from the kit as each MCP request does. */
+let mcpApp: { platform: Platform; app: ReturnType<typeof createApp> } | null = null;
+/**
+ * The connection's current choice, as the kit gives it to each MCP request: a request with the
+ * connection's token goes through the kit's own sign-in, which keeps only the chosen sources that
+ * still exist and saves that, then the choice is read back.
+ */
 async function withChoice(kit: Context): Promise<Context> {
   const id = (kit as Context & { _choice?: string | null })._choice;
   if (!kit.connection) return kit;
   // The kit refuses a token without a recorded choice, or one made for another chat, before any action runs.
   if (!id) throw new AppError('forbidden', "This caller's access could not be verified");
+  const token = [...connections.values()].find((item) => item.clientId === id)!.accessToken;
+  if (mcpApp?.platform !== state.platform) mcpApp = { platform: state.platform!, app: createApp({ ...application, viewHTML: '<!doctype html>' }, () => state.platform!) };
+  const signedIn = await mcpApp.app.request('http://127.0.0.1:4364/mcp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} }),
+  });
+  if (signedIn.status === 401) throw new AppError('revoked', 'This connection was disconnected');
   const row = await state.platform!.driver.query({ sql: 'SELECT sources, can_write FROM connection_access WHERE client_id = ?', params: [id], method: 'get' });
   const [sources, write] = row.rows as [string | null, number] | [];
   // Disconnected in Settings: the kit answers 401 and Ri shows Reconnect.

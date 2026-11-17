@@ -163,6 +163,24 @@ describe('assistants over MCP', () => {
     expect((await tool(personal.accessToken, 'get_record_title', { kind: 'person', id: maya })).structuredContent.result.title).toBe('Maya Chen');
   });
 
+  it('a deleted import leaves the connections that chose it, and an emptied choice sees nothing', async () => {
+    const me = owner();
+    await call('save_person', { name: 'Robin Vale' }, me);
+    const preview = await call('preview_import', { fileName: 'contacts.csv', mimeType: 'text/csv', base64: Buffer.from('Name,Email\nKai Moreno,kai@imported.example\n').toString('base64') }, me);
+    await call('apply_import', { previewId: preview.previewId, digest: preview.digest }, me);
+    const imported = (await call('list_sources', {}, me)).imports[0].source as string;
+    const only = await createTestConnection(state.platform!, { name: 'Ri · Import', sources: [imported] });
+    const mixed = await createTestConnection(state.platform!, { name: 'Ri · Mixed', sources: ['manual', imported] });
+    const names = async (token: string) => (await tool(token, 'list_people', { limit: 50 })).structuredContent.result.items.map((item: { name: string }) => item.name).sort();
+    expect(await names(only.accessToken)).toEqual(['Kai Moreno']);
+    await call('delete_source_data', { source: imported, confirm: true }, me);
+    // The kit drops the deleted import from both choices and saves them. Emptied, a choice never widens to everything.
+    expect(await names(only.accessToken)).toEqual([]);
+    expect(await names(mixed.accessToken)).toEqual(['Robin Vale']);
+    const saved = (await state.platform!.driver.query({ sql: 'SELECT client_id, sources FROM connection_access', params: [], method: 'all' })).rows as [string, string | null][];
+    expect(Object.fromEntries(saved.map(([id, sources]) => [id, sources && JSON.parse(sources)]))).toMatchObject({ [only.clientId]: [], [mixed.clientId]: ['manual'] });
+  });
+
   it('opens the whole app with open_people, and its view reaches nothing on the network', async () => {
     const all = await createTestConnection(state.platform!, { name: 'Ri' });
     const tools = (await mcp(all.accessToken, 'tools/list', {})).body!.result.tools as { name: string; _meta?: Record<string, any> }[];

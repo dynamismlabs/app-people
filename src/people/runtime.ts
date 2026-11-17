@@ -147,12 +147,11 @@ function createScopes(db: Db): ScopeResolver {
       const chosen = access.chosen;
       if (!chosen) throw new AppError('forbidden', 'This connection has no recorded choice. Connect it again');
       if (operation === 'write' && !chosen.write) throw new AppError('forbidden', 'This connection may read but not change these records');
-      // Only sources that still exist: Ri removed a deleted import or collection from every scope.
-      // The kit keeps each connection's choice as it was made, so People drops the gone ones here.
-      const existing = allSources(db);
+      // The kit hands over only chosen sources that still exist: it drops a deleted import or
+      // collection from every connection's choice and saves that, as Ri did for its scopes.
       return {
         kind: 'sources', actorId, scopeRef: access.scopeRef,
-        sources: new Set(chosen.sources ? chosen.sources.filter((key) => existing.includes(key)) : existing),
+        sources: new Set(chosen.sources ?? allSources(db)),
         operations: new Set<Operation>(chosen.write ? ['read', 'write'] : ['read']),
       };
     },
@@ -163,6 +162,8 @@ function createScopes(db: Db): ScopeResolver {
     },
     get(ref) {
       // The kit keeps each connection's choice (connection_access). People reads it to recheck queued work.
+      // The kit prunes deleted sources from it when the connection is next used or listed, so a
+      // saved choice can still name one here: People drops those itself.
       let row: { client_id: string; sources: string | null; can_write: number } | undefined;
       try { row = db.get('SELECT client_id, sources, can_write FROM connection_access WHERE client_id = ?', ref); }
       catch { return null; }
@@ -247,24 +248,24 @@ export function hubAccounts(db: Db): HubState & { grants: AccountGrant[] } {
   return { ...state, grants };
 }
 
-/** Ri answers a call without an account, when several are granted, with the list to choose from. The kit turns it into this message. */
-const CHOOSE = /Choose which account to use \(([^)]*)\)/;
+/** Ri answers a call without an account, when several are granted, with the list to choose from (the kit's `choose_account`). */
 async function discover(client: ReturnType<typeof connectors>, tool: string, account: (value: unknown) => string | null) {
   try {
     const found = account(await client.call(tool, {}));
     return found ? { accounts: [found], multi: false } : null;
   } catch (error) {
-    const match = error instanceof SetupRequired ? CHOOSE.exec(error.message) : null;
-    if (match) return { accounts: match[1].split(',').map((item) => item.trim()).filter(Boolean), multi: true };
+    if (error instanceof SetupRequired && error.code === 'choose_account' && error.accounts?.length) return { accounts: error.accounts, multi: true };
     throw error;
   }
 }
 
 /**
- * Ask the hub which accounts it lends People. Ri has no tool that lists them,
- * and the kit's client returns only tool names, so People reads them from a
- * call without an account: one account answers, several answer with the
- * choice (docs/parity.md). Saved for the owner's view and the job.
+ * Ask the hub which accounts it lends People, from a call without an account:
+ * one account answers with its address, several answer with the names to
+ * choose from (docs/parity.md). Saved for the owner's view and the job.
+ * People keys an account by its Gmail address or primary calendar. The kit's
+ * `accounts()` (Ri's ri__list_accounts, with stable ids) would change those
+ * keys, so moving to it needs a data migration (docs/parity.md, R1).
  */
 export async function refreshHubAccounts(kit: KitContext, c: Ctx): Promise<HubState> {
   const client = connectors(kit);
