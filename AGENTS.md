@@ -18,7 +18,8 @@ People keeps one person's relationships: people, companies, conversations, meeti
 
 - `src/app.ts`: the kit application: actions, views, sources, the job, connectors and migrations, all from `src/people`.
 - `src/people/kit.ts`: turns People's actions into kit actions (marking the person's own decisions view-only, `VIEW_ONLY`), and defines the `show_*` views, the job (`update_people`, every five minutes), `get_record_title`, the records a host can open People at and offer in its @ menu, and the sources a connection can be limited to.
-- `src/people/runtime.ts`: People's synchronous connection to the kit's `data.sqlite`, who is calling (browser owner, connection, job), write receipts, and the hub (accounts it lends, tool names, errors).
+- `src/people/runtime.ts`: People's context on the kit's `data.sqlite`, who is calling (browser owner, connection, job), write receipts, and the hub (accounts it lends, tool names, errors).
+- `src/people/domain/context.ts`: `Db`, People's synchronous SQL on the core's `transaction()` (the installation's own connection). There is no other connection to the database.
 - `src/people/actions/*`: People's actions in the shape they had in Ri, with strict zod (`zod/v3`) input and output, audience, effect and fictional examples.
 - `src/people/domain/*`: the records and rules, unchanged from Ri except where `docs/parity.md` says. `migrations.ts` holds the SQL migrations.
 - `src/people/view/*`: People's React screens from Ri. `view/kit/*` is Ri's UI kit, with `app.tsx` rewritten onto the kit's client.
@@ -46,7 +47,7 @@ People reads Gmail and Calendar and uses Ri's tasks and AI through the person's 
 All of Ri's rules still hold (they're in `legacy/AGENTS.ri.md`), with these changes:
 
 - Every read, search, count, sort key, snippet, export and context packet filters by the caller's scope first (`sourceFilter`, `canSee`). The scope comes from `ctx.scopes.resolve`, built in `runtime.ts`.
-- Domain code is synchronous. Never await inside `ctx.db.tx`: People's connection and the kit's share one file, and a held write lock blocks the kit. A step reads from the hub first and stores in one transaction after.
+- Domain code is synchronous. `ctx.db.tx` is the core's `transaction()`: work that returns a promise is refused and rolled back, and nothing else runs on the installation's connection until it ends. A step reads from the hub first and stores in one transaction after. A statement outside `tx` is a transaction of its own, so a synchronous read action runs as one (`invoke` in `kit.ts`). Keep read handlers synchronous (a contract test checks), and never open a better-sqlite3 connection of your own to `data.sqlite`.
 - Writes go through `ctx.mutate` with the request id (`requestId` on every action). Updates check `expectedRevision` and return a conflict instead of overwriting.
 - AI runs only through `callAi`, only when extraction is on. With it off, no `ri__ai_text` call may happen.
 - Append migrations to `src/people/domain/migrations.ts` (`app-0005` next). Applied SQL is immutable and checksum-checked; one statement per `-- statement-breakpoint`.
@@ -54,4 +55,4 @@ All of Ri's rules still hold (they're in `legacy/AGENTS.ri.md`), with these chan
 
 ## Hosting
 
-The Mac (the kit's Node target) only. People's synchronous SQLite can't run on D1, so the Worker entry answers 501. Docker works like the Node service. The data directory is `~/.local/share/people` or `APP_DATA_DIR`. The kit's portable `backup`/`restore` restores People, full-text index included, and so does a stopped copy of `data.sqlite`.
+The Mac (the kit's Node target) only. People's transactions read their own writes (the core's `transaction()`), which D1 can't run yet, so `app.config.ts` declares `platforms: ["node"]` and `deploy cloudflare` refuses People. The kit's build still makes a Worker, whose entry answers 501. Docker works like the Node service. The data directory is `~/.local/share/people` or `APP_DATA_DIR`. The kit's portable `backup`/`restore` restores People, full-text index included, and so does a stopped copy of `data.sqlite`.

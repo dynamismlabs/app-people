@@ -29,7 +29,7 @@ The whole app works inside a host that supports MCP Apps: `open_people` can open
 
 ## Your accounts
 
-In People's Settings, under "Your accounts through Ri", connect Ri once and choose in Ri which accounts and tools People may use. People's job ("Update from your accounts", every five minutes) reads them on its own: Gmail and Calendar, read only, through Ri. Nothing is sent or changed. Relationship extraction, briefings and profiles use Ri's model only when you turn Extract on.
+In People's Settings (in the browser, or from Settings inside an assistant's view), under "Your accounts through Ri", connect Ri once and choose in Ri which accounts and tools People may use. People's job ("Update from your accounts", every five minutes) reads them on its own: Gmail and Calendar, read only, through Ri. Nothing is sent or changed. Relationship extraction, briefings and profiles use Ri's model only when you turn Extract on.
 
 ## Run it
 
