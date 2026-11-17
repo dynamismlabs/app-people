@@ -9,7 +9,7 @@ People ran inside Ri as an included app (`apps/people` at Ri commit `3c442810`, 
 
 Lines about People's view inside an assistant say what each host did. Ri was checked on November 16, 2026 in a **disposable Ri at f55cdf96** on this Mac, on the web (headless Chromium) and in Ri's desktop app (source Electron), with dummy records only. It was not a Ri Home in everyday use, which runs on another computer. ChatGPT and Claude are still pending. The results are in [Real hosts](#real-hosts), with screenshots in `docs/parity/`.
 
-First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"), and on November 17, 2026 for kit `main` `ff47742` (still core 0.2.2, with the kit gaps the four ports found fixed in dynamismlabs/mcp-app-builder#10), then for kit `main` `df533b0` (#11 and #12) with Ri's `not_found` from dynamismlabs/ri#7. Ri's hub was read from its code; Ri itself wasn't run.
+First checked on November 12, 2026 against kit `main` `bc2c7f4` (core 0.2.0). Updated on November 16, 2026 for core 0.2.2 (kit `main` `1713f6a`, "the full app in every host"), and on November 17, 2026 for kit `main` `ff47742` (still core 0.2.2, with the kit gaps the four ports found fixed in dynamismlabs/mcp-app-builder#10), then for kit `main` `df533b0` (#11 and #12) with Ri's `not_found` from dynamismlabs/ri#7, and for kit `main` `a8e9b5d` (#13), on which People `v0.1.1` was switched. Ri's hub was read from its code; Ri itself wasn't run.
 
 ## The short version
 
@@ -174,8 +174,8 @@ Closed by kit `main` `ff47742` (core 0.2.2, dynamismlabs/mcp-app-builder#10), ea
 Closed by kit `main` `df533b0` (core 0.2.2, dynamismlabs/mcp-app-builder#11 and #12) with dynamismlabs/ri#7:
 - **K5. Pass-through errors lost their code.** The kit keeps Ri's `code`, and `ConnectorError.httpStatus` carries the provider's status. People reads `not_found` and `unsupported` by code. Only Calendar's 410 restarts a window. The message is read only for a hub from before ri#7 (`provider_error`, "provider error 404 for …"). `test/sync.test.ts` runs history expiry and Calendar's 410 and 404 against both hubs, and `test/extraction.test.ts` gets Ri's `unsupported` in its own words, which don't say "unsupported". Each test fails with its branch of the change removed. Before this, Ri's `unsupported` from its model service reached People as a failure, not as extraction being unavailable.
 
-Fixed in the kit, not yet shown for People:
-- **K13. `change` and `upgrade` don't refresh the service definition.** Since #12 the switch rewrites the launchd plist when it differs from what `serve --install` would write, so `local.people` should get `NODE_ENV=production` at its next switch. People hasn't switched on `df533b0` yet ([Kit version](#kit-version)), so its plist still has no `NODE_ENV`.
+Closed by kit `main` `a8e9b5d` (dynamismlabs/mcp-app-builder#12 and #13), shown by a run:
+- **K13. `change` and `upgrade` didn't refresh the service definition.** Since #12 the switch rewrites the launchd plist when it differs from what `serve --install` would write, and #13 stops launchd throttling the service. The `upgrade` that switched `local.people` to `887754c` rewrote it. `plutil -p ~/Library/LaunchAgents/local.people.plist` afterwards shows `"NODE_ENV" => "production"` beside `APP_DATA_DIR` and `APP_LOG_TIMESTAMPS`, `"ProcessType" => "Interactive"`, and the Node at `~/.nvm/versions/node/v24.2.0/bin/node`. Before it, the plist had only the two variables.
 
 Closed by core 0.2.2 (kit `main` `1713f6a`):
 - **K6. App-only tools:** `visibility: ["app"]`, enforced by Ri.
@@ -225,21 +225,27 @@ Small things seen, not fixed: Open in browser at the top right is hard to read i
 
 ## Kit version
 
-Core 0.2.2 from kit `main` `df533b0`, from the tarball the kit session packed, vendored in `vendor/`. People `v0.1.0` (`17ac728`) is on kit `bbbb340`.
+Core 0.2.2 from kit `main` `a8e9b5d` (dynamismlabs/mcp-app-builder#13: no launchd throttling, a measured health wait, never restoring twice), vendored in `vendor/`. The kit session ran `upgrade` with it on the installed `local.people`, which switched cleanly to `887754c`, carrying People's `v0.1.1` work through `b7ea18f`. `/api/health` answers with release `887754c17a14`, and `/mcp` without a token answers 401. People `v0.1.0` (`17ac728`) was on kit `bbbb340`.
 
-`pnpm exec app-builder upgrade --core <packed tarball> --json`, run on the installed `local.people`, stopped at `checks_failed`. All three failures were timing:
+On kit `df533b0`: `pnpm exec app-builder upgrade --core <packed tarball> --json`, run on the installed `local.people`, stopped at `checks_failed`. All three failures were timing:
 - The two latency tests missed 300 ms at p95 (432 and 1952 ms), with the Mac's load average about 200.
 - The duplicate wake-up test crossed into the next five-minute slot, because it started from the clock. It's fixed in `eadb10f`.
 
-The upgrade's commit (`11d713b`: the new tarball, the lockfile and the build skill) was merged by hand. `change --json` then stopped at `checks_failed` on the two latency tests alone (1010 and 998 ms), with the load average 290–510. Every other test passed in the copy. The service still runs `17ac728`. The latency budget has since moved to `pnpm test:perf`, out of the gate ([Tests](#tests)).
+The upgrade's commit (`11d713b`: the new tarball, the lockfile and the build skill) was merged by hand. `change --json` then stopped at `checks_failed` on the two latency tests alone (1010 and 998 ms), with the load average 290–510. Every other test passed in the copy, and the service stayed on `17ac728` until the switch above. The latency budget has since moved to `pnpm test:perf`, out of the gate ([Tests](#tests)).
 
 On kit `ff47742`: `upgrade --core ~/dynamism/app-builder` stopped at `checks_failed` because the expected-failure backup test passed (K2). Its commit (`9256926`) was merged by hand, the test made a normal one, and `change --json` switched the service. Nothing was reinstalled.
 
 Earlier: the kit's `upgrade --core` moved People from 0.2.0 to core 0.2.2 at kit `1713f6a` (run from the kit checkout's CLI, since 0.2.0 predates `upgrade`), before People was installed.
 
-The service definition: through `ff47742` only `serve --install` wrote the launchd plist, so `local.people`, installed with an earlier core, runs without `NODE_ENV=production` (K13). Callers never see stacks either way, which the core enforces.
+The service definition: through `ff47742` only `serve --install` wrote the launchd plist, so `local.people`, installed with an earlier core, ran without `NODE_ENV=production` until the `887754c` switch rewrote it (K13). Callers never see stacks either way, which the core enforces.
 
 ## Evidence
+
+November 17, before tagging `v0.1.1` (release `887754c`, kit `a8e9b5d`):
+- `pnpm test:perf` at the default limit, at a load average of 11.1–11.6 on 16 cores, on the installed core: both groups were measured and passed.
+  - The person's calls, p95: the first page by name 2.3 ms, each sort 7.5 ms, paging 4.2 ms, filtered by company, list and last exchange 27.4 ms, next meeting 3.7 ms, follow-up 4.2 ms, search 8.4 ms, `get_person` 0.3 ms, the timeline 1.8 ms, `list_organizations` 1.7 ms, `get_organization` 0.6 ms, `get_today` 5.1 ms.
+  - The narrower chat's, p95: by name 19.5 ms, by last exchange 24.5 ms, search 2.5 ms, `get_person` 1.6 ms.
+- The plist after the switch, quoted in K13.
 
 November 17, the latency budget out of the gate:
 - `pnpm test:perf` at a load average of 18–20 on 16 cores, with `PERF_MAX_LOAD=2`: every timed call's p95 was at most 30.4 ms (the filtered owner list), and the narrower chat's slowest was 29.5 ms. At the default limit the same machine reported "not measured" at 16.7. The 432–1952 ms failures in the gate were the machine, at load averages of 200–510.
