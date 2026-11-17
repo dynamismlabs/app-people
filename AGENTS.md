@@ -6,6 +6,8 @@ People keeps one person's relationships: people, companies, conversations, meeti
 
 - `pnpm install --frozen-lockfile`
 - `pnpm typecheck`, `pnpm test` (vitest, disposable data), `pnpm build`
+- `pnpm test:perf`: the latency budget, p95 under 300 ms at release volume (`test/performance.perf.ts`). Run it on a quiet machine before a release. It says "not measured" when the load average is above one per core (`PERF_MAX_LOAD`).
+- Keep wall-clock assertions out of `pnpm test`: it's the gate every `change` and `serve --install` must pass, on whatever machine runs it. `test/performance.test.ts` checks the query plans of the calls the budget covers instead. A plan change fails its snapshot. Look at the new plan, then run `pnpm test -u` if it's fine.
 - `pnpm test:host`: builds, then runs People's whole view in the kit's strict MCP Apps test host (Playwright with installed Chrome, one worker, a disposable preview server it stops)
 - `pnpm preview`: the fictional preview in a disposable data directory (`PEOPLE_PREVIEW=1`, `APP_CONNECTORS=fixtures`)
 - `pnpm dev` with a disposable `APP_DATA_DIR`

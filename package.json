@@ -12,7 +12,8 @@
     "db:migrate": "app-builder db migrate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:host": "app-builder build && playwright test"
+    "test:host": "app-builder build && playwright test",
+    "test:perf": "vitest run --config vitest.perf.config.ts"
   },
   "dependencies": {
     "@app-builder/core": "file:vendor/app-builder-core-0.2.2.tgz",

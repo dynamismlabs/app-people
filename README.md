@@ -48,7 +48,7 @@ To run it for real, commit and run `pnpm exec app-builder serve --install`. It c
 - Imported files up to 512 KiB and 5,000 rows.
 - Context for chat is at most 20 facts or commitments and 20 interaction references, within 16 KiB.
 - AI prompts are at most 16,000 characters, mark source text as untrusted, and results are checked against a strict format with exact passages.
-- List, search and detail stay under 300 ms at p95 on 10,000 people, 1,000 companies and 100,000 interactions (`test/performance.test.ts`).
+- List, search and detail stay under 300 ms at p95 on 10,000 people, 1,000 companies and 100,000 interactions. `pnpm test:perf` measures that on a quiet machine. `pnpm test` checks that these calls read the large tables through indexes, which doesn't depend on the machine.
 
 ## Development
 
@@ -56,6 +56,7 @@ To run it for real, commit and run `pnpm exec app-builder serve --install`. It c
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm test:perf   # the latency budget, on a quiet machine before a release
 ```
 
 All tests use fictional people and a fake hub. Nothing here is evidence of live Gmail, Calendar, Ri or AI behavior. See AGENTS.md for the layout and rules.
