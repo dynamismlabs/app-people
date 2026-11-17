@@ -104,7 +104,7 @@ describe('People release requirements', () => {
     const priya = people.find((item: { name: string }) => item.name === 'Priya Shah');
     for (const person of [jordan, priya]) {
       const detail = await call('get_person', { id: person.id }, me);
-      const preview = await call('preview_company_attribution', { personId: person.id, keyId: detail.identities[0].keyId, organizationId: fieldwork.id, account: 'account:work' }, me);
+      const preview = await call('preview_company_attribution', { personId: person.id, keyId: detail.identities[0].keyId, organizationId: fieldwork.id, sourceAccount: 'account:work' }, me);
       await call('apply_company_attribution', { previewId: preview.previewId, digest: preview.digest }, me);
     }
     const activity = await call('list_interactions', { subjectKind: 'organization', subjectId: fieldwork.id, limit: 10 }, me);
@@ -140,7 +140,7 @@ describe('People release requirements', () => {
     const company = (await call('save_organization', { name: 'Fieldwork' }, me)).record;
     const jordan = (await call('list_people', { limit: 5 }, me)).items[0];
     const keyId = (await call('get_person', { id: jordan.id }, me)).identities[0].keyId;
-    const preview = await call('preview_company_attribution', { personId: jordan.id, keyId, organizationId: company.id, account: 'account:work' }, me);
+    const preview = await call('preview_company_attribution', { personId: jordan.id, keyId, organizationId: company.id, sourceAccount: 'account:work' }, me);
     expect(preview.matches.total).toBe(2);
     const applied = await call('apply_company_attribution', { previewId: preview.previewId, digest: preview.digest }, me);
     const manualTarget = (await call('list_interactions', { subjectKind: 'organization', subjectId: company.id, limit: 10 }, me)).items.find((item: { title: string }) => item.title === 'Kickoff');
@@ -160,7 +160,7 @@ describe('People release requirements', () => {
     expect(await titles()).toEqual(['Kickoff', 'Timeline']);
     // Narrowing the dates retracts only this rule's links outside the range.
     const rule = (await call('get_organization', { id: company.id }, me)).attributionRules[0];
-    const narrowed = await call('preview_company_attribution', { personId: jordan.id, keyId, organizationId: company.id, account: 'account:work', from: day(-5), ruleId: rule.id }, me);
+    const narrowed = await call('preview_company_attribution', { personId: jordan.id, keyId, organizationId: company.id, sourceAccount: 'account:work', from: day(-5), ruleId: rule.id }, me);
     await call('apply_company_attribution', { previewId: narrowed.previewId, digest: narrowed.digest }, me);
     expect(await titles()).toEqual(['Kickoff', 'Timeline']);
     // Removing the rule keeps the manual link.

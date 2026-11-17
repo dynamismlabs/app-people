@@ -21,7 +21,7 @@ import {
 } from '../schemas.js';
 import { getRelation, saveRelation } from '../domain/personal.js';
 import { AFFILIATION, COVERAGE, ID, ORGANIZATION, PERSON, TIMELINE, T, DIGEST } from './examples.js';
-import { READ_ERRORS, WRITE_ERRORS, action, listInput, listOutput } from './shared.js';
+import { READ_ERRORS, WRITE_ERRORS, action, listInput, listOutput, withAccount } from './shared.js';
 
 const identifier = z.object({ kind: z.enum(['email', 'phone', 'linkedin', 'website']), value: z.string().min(1).max(320) }).strict();
 const mergeRef = z.object({ id: idSchema, revision: z.number().int(), survivorId: idSchema, mergedId: idSchema, createdAt: z.string() }).strict();
@@ -294,7 +294,7 @@ export const peopleActions = [
   action({
     name: 'preview_company_attribution',
     description: 'Preview "Include work conversations with this address": one account, one confirmed work address, one company and a date range, with representative matching exchanges, coverage and an expiring digest. Stores only the preview.',
-    input: z.object({ personId: idSchema, keyId: idSchema, organizationId: idSchema, account: z.string().min(1).max(200), from: localDateSchema.nullable().optional(), to: localDateSchema.nullable().optional(), ruleId: idSchema.optional(), collection: collectionKeySchema.optional() }).strict(),
+    input: z.object({ personId: idSchema, keyId: idSchema, organizationId: idSchema, sourceAccount: z.string().min(1).max(200), from: localDateSchema.nullable().optional(), to: localDateSchema.nullable().optional(), ruleId: idSchema.optional(), collection: collectionKeySchema.optional() }).strict(),
     output: z.object({
       previewId: idSchema, digest: z.string().length(64), expiresAt: z.string(),
       draft: z.object({ person: refSchema, organization: refSchema, identity: z.string().max(320), account: z.string().max(300), from: localDateSchema.nullable(), to: localDateSchema.nullable(), collection: collectionKeySchema, ruleId: idSchema.nullable() }).strict(),
@@ -302,14 +302,14 @@ export const peopleActions = [
       coverage: coverageSchema, note: z.string().max(400),
     }).strict(),
     audience: ['user'], effect: 'app_write', retry: 'idempotent', errors: WRITE_ERRORS, visibility: 'app',
-    examples: [{ input: { personId: ID.jordan, keyId: '0194d7a0-0000-7000-8000-0000000ff002', organizationId: ID.fieldwork, account: 'account:fixture-work', from: '2026-09-01', to: null }, output: {
+    examples: [{ input: { personId: ID.jordan, keyId: '0194d7a0-0000-7000-8000-0000000ff002', organizationId: ID.fieldwork, sourceAccount: 'account:fixture-work', from: '2026-09-01', to: null }, output: {
       previewId: ID.preview, digest: DIGEST, expiresAt: T.now, draft: { person: { id: ID.jordan, name: 'Jordan Bell' }, organization: { id: ID.fieldwork, name: 'Fieldwork' }, identity: 'jordan@fieldwork.example', account: 'Work Gmail', from: '2026-09-01', to: null, collection: 'manual', ruleId: null },
       matches: { total: 4, sample: [TIMELINE] }, coverage: COVERAGE, note: 'Applies to direct work exchanges with this address in this account and range, now and on later syncs.',
     } }],
     handler(input, invocation) {
       const c = ctx(), scope = writeScope(invocation);
       requireOwner(scope);
-      return c.db.tx(() => ({ ...previewAttribution(c, scope, input), coverage: coverageFor(c, scope, granted(invocation)) }));
+      return c.db.tx(() => ({ ...previewAttribution(c, scope, withAccount(input)), coverage: coverageFor(c, scope, granted(invocation)) }));
     },
   }),
   action({

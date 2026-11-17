@@ -15,7 +15,7 @@ import { getNavigation, pinnedViews, saveNavigation, navigationSchema } from '..
 import { seedFixtures, shouldSeed } from '../fixtures/seed.js';
 import { collectionKeySchema, sourceKeySchema, sourceShareSchema } from '../schemas.js';
 import { DIGEST, ID, T } from './examples.js';
-import { READ_ERRORS, RESOURCE, SYNC_ERRORS, WRITE_ERRORS, action } from './shared.js';
+import { READ_ERRORS, RESOURCE, SYNC_ERRORS, WRITE_ERRORS, action, withAccount } from './shared.js';
 
 const SECTIONS = ['today', 'people', 'follow-ups', 'companies', 'pipelines', 'sources', 'person', 'company', 'opportunity', 'access'] as const;
 const openData = z.object({
@@ -136,25 +136,25 @@ export const commonActions = [
   action({
     name: 'configure_source',
     description: 'Choose an account\'s history range (30, 90 or 365 days) and, for calendars, which calendars to read. A wider range resumes older backfill only. Never reads a whole mailbox.',
-    input: z.object({ account: z.string().min(1).max(128), kind: z.enum(['mail', 'calendar']), historyDays: z.union([z.literal(30), z.literal(90), z.literal(365)]).optional(), calendars: z.array(z.string().min(1).max(1024)).max(20).optional() }).strict(),
+    input: z.object({ sourceAccount: z.string().min(1).max(128), kind: z.enum(['mail', 'calendar']), historyDays: z.union([z.literal(30), z.literal(90), z.literal(365)]).optional(), calendars: z.array(z.string().min(1).max(1024)).max(20).optional() }).strict(),
     output: z.object({ status: z.literal('saved'), historyDays: z.number().int(), calendars: z.array(z.string()) }).strict(),
     audience: ['user'], effect: 'app_write', retry: 'idempotent', errors: WRITE_ERRORS, visibility: 'app',
-    examples: [{ input: { account: 'fixture-personal', kind: 'mail', historyDays: 365 }, output: { status: 'saved', historyDays: 365, calendars: [] } }],
+    examples: [{ input: { sourceAccount: 'fixture-personal', kind: 'mail', historyDays: 365 }, output: { status: 'saved', historyDays: 365, calendars: [] } }],
     handler(input, invocation) {
       const c = ctx(); requireOwner(writeScope(invocation));
-      return c.mutate(invocation, 'configure_source', input, () => { const result = configureSource(c, accessOf(invocation), input); return { status: 'saved' as const, historyDays: result.historyDays, calendars: result.calendars }; });
+      return c.mutate(invocation, 'configure_source', input, () => { const result = configureSource(c, accessOf(invocation), withAccount(input)); return { status: 'saved' as const, historyDays: result.historyDays, calendars: result.calendars }; });
     },
   }),
   action({
     name: 'pause_source',
     description: 'Pause or resume updates for one account. Paused accounts keep their records and stop their jobs.',
-    input: z.object({ account: z.string().min(1).max(128), paused: z.boolean() }).strict(),
+    input: z.object({ sourceAccount: z.string().min(1).max(128), paused: z.boolean() }).strict(),
     output: z.object({ status: z.literal('saved'), paused: z.boolean() }).strict(),
     audience: ['user'], effect: 'app_write', retry: 'idempotent', errors: WRITE_ERRORS, visibility: 'app',
-    examples: [{ input: { account: 'fixture-personal', paused: true }, output: { status: 'saved', paused: true } }],
+    examples: [{ input: { sourceAccount: 'fixture-personal', paused: true }, output: { status: 'saved', paused: true } }],
     handler(input, invocation) {
       const c = ctx(); requireOwner(writeScope(invocation));
-      return c.mutate(invocation, 'pause_source', input, () => { pauseSource(c, input); return { status: 'saved' as const, paused: input.paused }; });
+      return c.mutate(invocation, 'pause_source', input, () => { pauseSource(c, withAccount(input)); return { status: 'saved' as const, paused: input.paused }; });
     },
   }),
   action({

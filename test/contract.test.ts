@@ -72,6 +72,13 @@ describe('contract', () => {
     expect(contract.connectors?.capabilities).toEqual(['mail.read', 'calendar.read']);
   });
 
+  it('no tool takes an input named account, which Ri reserves and refuses a server for', () => {
+    const contract = actionContract({ ...application, viewHTML: '<!doctype html>' });
+    const tools = contract.mcp.tools as { name: string; inputSchema?: { properties?: Record<string, unknown>; anyOf?: { properties?: Record<string, unknown> }[] } }[];
+    const declaring = tools.filter((tool) => [tool.inputSchema, ...(tool.inputSchema?.anyOf ?? [])].some((schema) => schema?.properties && 'account' in schema.properties)).map((tool) => tool.name);
+    expect(declaring).toEqual([]);
+  });
+
   it('copy avoids long dashes and semicolons in user-visible descriptions', () => {
     for (const action of [...definition.actions, ...application.actions]) {
       expect(action.description, action.name).not.toMatch(/[–—]/);

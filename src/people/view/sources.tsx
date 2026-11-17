@@ -56,11 +56,11 @@ export function SourcesView() {
         // Accounts come through Ri: connecting, and choosing which ones, starts in People's Settings.
         onConnect={() => app.manageAccess()}
         onManageAccess={() => app.manageAccess()}
-        onPause={async (id) => { await pause.run({ account: account(id).account, paused: true }); pause.reset(); reload(); }}
-        onResume={async (id) => { await pause.run({ account: account(id).account, paused: false }); pause.reset(); reload(); }}
+        onPause={async (id) => { await pause.run({ sourceAccount: account(id).account, paused: true }); pause.reset(); reload(); }}
+        onResume={async (id) => { await pause.run({ sourceAccount: account(id).account, paused: false }); pause.reset(); reload(); }}
         onContinue={async (id) => { const result = await step.run({ source: source(id) }); step.reset(); announce(result.summary); reload(); }}
         onDeleteImported={async (id) => { await remove.run({ source: source(id), confirm: true }); remove.reset(); announce('Imported data deleted. Your notes were kept'); reload(); }}
-        onChangeHistory={async (id, days) => { const item = account(id); await configure.run({ account: item.account, kind: item.kind, historyDays: days }); configure.reset(); reload(); }}
+        onChangeHistory={async (id, days) => { const item = account(id); await configure.run({ sourceAccount: item.account, kind: item.kind, historyDays: days }); configure.reset(); reload(); }}
         note={<>People reads sent mail, replies and small meetings to find the people you actually correspond with. Bulk, list and no-reply mail is left out before anything else happens, and nothing is ever sent or changed in your accounts. {data.accounts.length ? '' : 'Without an account, add people by hand or import a file.'} {data.scopes ? `${data.scopes} assistant${data.scopes === 1 ? ' is' : 's are'} connected, each seeing only what you chose when it connected. See or disconnect them in Settings.` : 'Assistants you connect choose what they may see when they connect. See them in Settings.'}</>}
       />
       <Extraction data={data} reload={reload} />

@@ -50,3 +50,13 @@ export const READ_ERRORS = ['invalid_input', 'not_found', 'forbidden', 'revoked'
 export const WRITE_ERRORS = ['invalid_input', 'not_found', 'forbidden', 'revoked', 'conflict'] as typeof READ_ERRORS;
 export const SYNC_ERRORS = ['invalid_input', 'forbidden', 'revoked', 'busy', 'timeout', 'unsupported'] as typeof READ_ERRORS;
 export const RESOURCE = 'ui://people/main' as const;
+
+/**
+ * Tools name an account `sourceAccount`, never `account`: Ri reserves `account`
+ * on every tool it connects (it fills it in to choose one of the person's
+ * accounts) and refuses a server whose tool declares it. The domain keeps `account`.
+ */
+export function withAccount<T extends { sourceAccount: string }>(input: T): Omit<T, 'sourceAccount'> & { account: string } {
+  const { sourceAccount, ...rest } = input;
+  return { ...rest, account: sourceAccount };
+}
