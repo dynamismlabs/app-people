@@ -382,14 +382,21 @@ describe('People release requirements', () => {
     expect([...host.tasks.values()][0].deleted).toBeUndefined();
   });
 
-  // Kit gap (docs/parity.md): the kit's portable backup copies every table it finds, including
-  // the internal tables SQLite keeps for People's full-text search, and restoring them fails
-  // ("object name reserved for internal use"). This fails until the kit handles FTS5 tables;
-  // when it passes, turn it into a normal test.
-  it.fails('restores People from the kit\'s installation backup', async () => {
+  // The kit's portable backup restores People's full-text index with its rowids (core 0.2.2 at
+  // kit ff47742; before that the restore failed, docs/parity.md K2). People's index rows are
+  // keyed by search_rows ids, so an update after the restore must replace the old text.
+  it('restores People from the kit\'s installation backup, search included', async () => {
     const me = owner();
-    await call('save_person', { name: 'Maya Chen', identifiers: [{ kind: 'email', value: 'maya@northstar.example' }] }, me);
+    const maya = await call('save_person', { name: 'Maya Chen', identifiers: [{ kind: 'email', value: 'maya@northstar.example' }] }, me);
+    await call('save_organization', { name: 'Northstar Labs', website: 'northstar.example' }, me);
     ctx = await backupAndRestore();
     expect((await call('search_people', { text: 'Maya', limit: 5 }, me)).total).toBe(1);
+    expect((await call('search_people', { text: 'northstar', limit: 5, includeOrganizations: true }, me)).organizations.map((item: { name: string }) => item.name)).toContain('Northstar Labs');
+    const back = await call('get_person', { id: maya.record.id }, me);
+    await call('save_person', { id: maya.record.id, expectedRevision: back.person.revision, name: 'Maya Lindqvist' }, me);
+    expect((await call('search_people', { text: 'Chen', limit: 5 }, me)).total).toBe(0);
+    expect((await call('search_people', { text: 'Lindqvist', limit: 5 }, me)).total).toBe(1);
+    await call('save_person', { name: 'Jordan Bell' }, me);
+    expect((await call('search_people', { text: 'Jordan', limit: 5 }, me)).total).toBe(1);
   });
 });
