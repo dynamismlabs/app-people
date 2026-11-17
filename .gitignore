@@ -13,3 +13,5 @@ wrangler.deploy.json
 *.db
 *.db-*
 .DS_Store
+test-results/
+playwright-report/

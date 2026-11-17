@@ -1,11 +1,12 @@
 # People
 
-People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.0, starter 0.2.0, vendored in `vendor/`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
+People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.2, starter 0.2.0, vendored in `vendor/`; upgraded with the kit's `upgrade --core`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
 
 ## Commands
 
 - `pnpm install --frozen-lockfile`
 - `pnpm typecheck`, `pnpm test` (vitest, disposable data), `pnpm build`
+- `pnpm test:host`: builds, then runs People's whole view in the kit's strict MCP Apps test host (Playwright with installed Chrome, one worker, a disposable preview server it stops)
 - `pnpm preview`: the fictional preview in a disposable data directory (`PEOPLE_PREVIEW=1`, `APP_CONNECTORS=fixtures`)
 - `pnpm dev` with a disposable `APP_DATA_DIR`
 - `pnpm exec app-builder serve --install` to run it as the person's service, `pnpm exec app-builder change` to change it. Use `--service process` while developing. Never install a launchd service while developing.
@@ -14,7 +15,7 @@ People keeps one person's relationships: people, companies, conversations, meeti
 ## Layout
 
 - `src/app.ts`: the kit application: actions, views, sources, the job, connectors and migrations, all from `src/people`.
-- `src/people/kit.ts`: turns People's actions into kit actions, and defines the `show_*` views, the job (`update_people`, every five minutes), `get_record_title` and the sources a connection can be limited to.
+- `src/people/kit.ts`: turns People's actions into kit actions (marking the person's own decisions view-only, `VIEW_ONLY`), and defines the `show_*` views, the job (`update_people`, every five minutes), `get_record_title`, the records a host can open People at and offer in its @ menu, and the sources a connection can be limited to.
 - `src/people/runtime.ts`: People's synchronous connection to the kit's `data.sqlite`, who is calling (browser owner, connection, job), write receipts, and the hub (accounts it lends, tool names, errors).
 - `src/people/actions/*`: People's actions in the shape they had in Ri, with strict zod (`zod/v3`) input and output, audience, effect and fictional examples.
 - `src/people/domain/*`: the records and rules, unchanged from Ri except where `docs/parity.md` says. `migrations.ts` holds the SQL migrations.
@@ -22,13 +23,14 @@ People keeps one person's relationships: people, companies, conversations, meeti
 - `src/screens.tsx`: the web page, the cards for each `show_*` tool, and the routes. `src/root.tsx` and `src/routes/*` are the kit's.
 - `src/lib/*`: the parts of Ri's app kit People used (errors, cursors, settings, the step queue, account checkpoints, mail parsing and sync steps, dates).
 - `fixtures/connectors.json`: fictional hub answers for `APP_CONNECTORS=fixtures`.
-- `test/*`: People's tests from Ri, run through the kit's adapter, plus `kit.test.ts` for MCP, views, the job and the hub.
+- `test/*`: People's tests from Ri, run through the kit's adapter, plus `kit.test.ts` for MCP, views, the job and the hub, and `people.browser.spec.ts` for the view in the strict test host (`test/host/*` are copies of the kit's host and OAuth helpers, which the core package doesn't ship).
 - `legacy/`: Ri's README, AGENTS.md, plugin manifest and skills, for reference only.
 
 ## Who is calling
 
-- **The person's browser** (no OAuth connection) is the owner: every source and the owner-only actions (audience `user`).
-- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. Sources that no longer exist are ignored. It can call actions with audience `agent`, never owner-only ones.
+- **The person's browser** (no OAuth connection) is the owner: every source and every action.
+- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. Sources that no longer exist are ignored.
+- **People's view inside a host** calls through that connection. The person's own decisions are view-only (`visibility: ["app"]`): the host keeps them from the model, and the view's call acts as the owner when the connection was given every source. Limited connections stay limited. It's the host's rule (Ri enforces it); a host that ignores visibility would let its model call them, so mark nothing else view-only.
 - **The job** sees the accounts the hub lends.
 
 Only the installation's owner uses People. Other signed-in accounts are refused.

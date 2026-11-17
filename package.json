@@ -11,7 +11,8 @@
     "start": "app-builder serve",
     "db:migrate": "app-builder db migrate",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:host": "app-builder build && playwright test"
   },
   "dependencies": {
     "@app-builder/core": "file:vendor/app-builder-core-0.2.2.tgz",
@@ -25,7 +26,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261104.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
     "@modelcontextprotocol/sdk": "1.32.2",
+    "@playwright/test": "1.60.0",
     "@react-router/dev": "7.18.5",
     "@tailwindcss/vite": "4.3.3",
     "@types/better-sqlite3": "7.6.13",
