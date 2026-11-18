@@ -4,6 +4,7 @@ import { PEOPLE_MIGRATIONS } from "./people/domain/migrations";
 import { HUB_TOOLS } from "./people/runtime";
 import { peopleJobs, peopleKitActions, peopleRecords, peopleSources, peopleViews } from "./people/kit";
 import { exportPeople } from "./people/export";
+import { peoplePrompts } from "./people/prompts";
 
 /**
  * People on App Builder. The actions, views, job and sources come from
@@ -13,6 +14,8 @@ export const application: Application = {
   config: appConfig,
   actions: peopleKitActions,
   views: peopleViews,
+  // People's three skills from Ri, offered as MCP prompts (src/people/prompts.ts).
+  prompts: peoplePrompts,
   sources: peopleSources,
   records: peopleRecords,
   jobs: peopleJobs,

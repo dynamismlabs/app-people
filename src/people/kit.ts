@@ -128,7 +128,7 @@ async function freshAccounts(kit: Context) {
 
 const byName = new Map(peopleActions.map((item) => [item.name, item]));
 /** Run one of People's handlers inside a view or job, under the same caller. */
-async function run<T>(kit: Context, name: string, input: Record<string, unknown>): Promise<T> {
+export async function run<T>(kit: Context, name: string, input: Record<string, unknown>): Promise<T> {
   const definition = byName.get(name);
   if (!definition) throw new Error(`Unknown People action ${name}`);
   return withInvocation(kit, {}, async (invocation, c) => invoke(c, definition, input, invocation) as T);

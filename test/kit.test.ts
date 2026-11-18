@@ -248,13 +248,60 @@ describe('the person\'s own work inside a host', () => {
   });
 });
 
-describe('instructions for assistants', () => {
+describe('instructions and prompts for assistants', () => {
   it("tells assistants how People's tools fit together when a connection starts", async () => {
     const all = await createTestConnection(state.platform!, { name: 'Ri', write: true });
     const started = await mcp(all.accessToken, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
     expect(started.body!.result.instructions).toBe(application.config.instructions);
     expect(started.body!.result.instructions.length).toBeLessThanOrEqual(2000);
     expect(started.body!.result.instructions).toContain('search_people');
+  });
+
+  it("offers People's three skills from Ri as prompts", async () => {
+    const all = await createTestConnection(state.platform!, { name: 'Ri', write: true });
+    const listed = (await mcp(all.accessToken, 'prompts/list', {})).body!.result.prompts as { name: string; arguments?: { name: string; required: boolean }[] }[];
+    expect(listed.map((item) => [item.name, (item.arguments ?? []).map((arg) => `${arg.name}${arg.required ? '' : '?'}`)])).toEqual([
+      ['prepare-for-a-meeting', ['person']],
+      ['remember-about-someone', ['person', 'note?']],
+      ['review-follow-ups', ['filter?', 'person?']],
+    ]);
+  });
+
+  it('a prompt finds the person only within what its connection may see, and changes nothing', async () => {
+    await runJob();
+    const all = await createTestConnection(state.platform!, { name: 'Ri', write: true });
+    const work = await createTestConnection(state.platform!, { name: 'Ri · Work', sources: ['account:work'], write: false });
+    const prompt = async (token: string, name: string, args: Record<string, string>) => (await mcp(token, 'prompts/get', { name, arguments: args })).body!;
+    const text = (answer: { result?: { messages: { role: string; content: { text: string } }[] } }) => answer.result!.messages.map((message) => `${message.role}: ${message.content.text}`).join('\n');
+    const records = () => ctx!.db.get('SELECT (SELECT COUNT(*) FROM persons) AS persons, (SELECT COUNT(*) FROM notes) AS notes, (SELECT COUNT(*) FROM app_invocations) AS receipts, (SELECT MAX(updated_at) FROM persons) AS updated');
+    const before = records();
+    const maya = (await tool(all.accessToken, 'search_people', { text: 'Maya Chen', limit: 5 })).structuredContent.result.items[0];
+
+    // One match: the prompt names the record, so the assistant reads its context straight away.
+    const prepared = text(await prompt(all.accessToken, 'prepare-for-a-meeting', { person: 'Maya Chen' }));
+    expect(prepared).toMatch(/^user: Prepare me for my meeting with Maya Chen\./);
+    expect(prepared).toContain(`subjectKind "person" and subjectId "${maya.id}"`);
+    expect(prepared).toContain('Never say I attended unless I confirmed it.');
+    // Maya is only in the personal account, which the work connection can't see: not even that she's there.
+    const hidden = await prompt(work.accessToken, 'prepare-for-a-meeting', { person: 'Maya Chen' });
+    expect(hidden.result).toBeUndefined();
+    expect(hidden.error.message).toContain('No one called "Maya Chen" is in People for this connection. Check the spelling, or ask about them without the prompt.');
+    expect(text(await prompt(work.accessToken, 'prepare-for-a-meeting', { person: 'Jordan' }))).toContain('In People, "Jordan" is Jordan Bell');
+
+    // A read-only connection can't save, so Remember says so instead of preparing a request that would fail.
+    expect((await prompt(work.accessToken, 'remember-about-someone', { person: 'Jordan Bell', note: 'Moved to Denver.' })).error.message).toMatch(/can read People but not change it/);
+    const remember = text(await prompt(all.accessToken, 'remember-about-someone', { person: 'Maya Chen', note: 'She moved to Lisbon.' }));
+    expect(remember).toContain('user: Remember this about Maya Chen: "She moved to Lisbon."');
+    expect(remember).toContain('capture_about_person with name "Maya Chen"');
+    expect(text(await prompt(all.accessToken, 'remember-about-someone', { person: 'Maya Chen' }))).toContain('Ask me what it is first.');
+
+    const review = text(await prompt(work.accessToken, 'review-follow-ups', { filter: 'waiting_on' }));
+    expect(review).toContain("user: Review what I'm waiting on.");
+    expect(review).toContain('list_commitments with filter "waiting_on"');
+    expect(review).toContain("can only read People, so it can't accept");
+    expect(text(await prompt(all.accessToken, 'review-follow-ups', {}))).toContain('filter "i_owe", then "waiting_on", then "suggestions"');
+    // Picking a prompt only prepares a request.
+    expect(records()).toEqual(before);
   });
 });
 
