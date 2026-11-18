@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { actionContract } from '@app-builder/core';
 import { application } from '../src/app.js';
@@ -88,8 +89,18 @@ describe('contract', () => {
     expect(declaring).toEqual([]);
   });
 
+  it("lists People's three skills from Ri as prompts, with text arguments only", () => {
+    const contract = actionContract({ ...application, viewHTML: '<!doctype html>' });
+    const prompts = contract.mcp.prompts as { name: string; title: string; arguments?: { name: string; required: boolean; description?: string }[] }[];
+    // The originals are in legacy/skills, one folder per skill.
+    expect(prompts.map((prompt) => prompt.name).sort()).toEqual(fs.readdirSync(new URL('../legacy/skills', import.meta.url)).sort());
+    const filter = prompts.find((prompt) => prompt.name === 'review-follow-ups')!.arguments!.find((argument) => argument.name === 'filter')!;
+    expect(filter).toMatchObject({ required: false, description: expect.stringContaining('One of: i_owe, waiting_on, suggestions.') });
+  });
+
   it('copy avoids long dashes and semicolons in user-visible descriptions', () => {
-    for (const item of [...definition.actions, ...application.actions, { name: 'instructions', description: application.config.instructions ?? '' }]) {
+    const prompts = (application.prompts ?? []).map((prompt) => ({ name: prompt.name, description: `${prompt.title}. ${prompt.description}` }));
+    for (const item of [...definition.actions, ...application.actions, ...prompts, { name: 'instructions', description: application.config.instructions ?? '' }]) {
       expect(item.description, item.name).not.toMatch(/[–—]/);
       expect(item.description, item.name).not.toMatch(/;/);
     }
