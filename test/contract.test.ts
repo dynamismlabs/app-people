@@ -89,9 +89,9 @@ describe('contract', () => {
   });
 
   it('copy avoids long dashes and semicolons in user-visible descriptions', () => {
-    for (const action of [...definition.actions, ...application.actions]) {
-      expect(action.description, action.name).not.toMatch(/[–—]/);
-      expect(action.description, action.name).not.toMatch(/;/);
+    for (const item of [...definition.actions, ...application.actions, { name: 'instructions', description: application.config.instructions ?? '' }]) {
+      expect(item.description, item.name).not.toMatch(/[–—]/);
+      expect(item.description, item.name).not.toMatch(/;/);
     }
   });
 });

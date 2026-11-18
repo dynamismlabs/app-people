@@ -248,6 +248,16 @@ describe('the person\'s own work inside a host', () => {
   });
 });
 
+describe('instructions for assistants', () => {
+  it("tells assistants how People's tools fit together when a connection starts", async () => {
+    const all = await createTestConnection(state.platform!, { name: 'Ri', write: true });
+    const started = await mcp(all.accessToken, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
+    expect(started.body!.result.instructions).toBe(application.config.instructions);
+    expect(started.body!.result.instructions.length).toBeLessThanOrEqual(2000);
+    expect(started.body!.result.instructions).toContain('search_people');
+  });
+});
+
 describe('the kit\'s fixture source', () => {
   /** The kit's fixture source with fixed answers, for Ri's own services. */
   const fixtures: ConnectorFixtures = {

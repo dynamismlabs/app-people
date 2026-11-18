@@ -17,6 +17,7 @@ People keeps one person's relationships: people, companies, conversations, meeti
 ## Layout
 
 - `src/app.ts`: the kit application: actions, views, sources, the job, connectors and migrations, all from `src/people`.
+- `app.config.ts`: the id, port and `platforms`, and `instructions`, what an assistant should know across People's tools (sent at MCP initialize, at most 2,000 characters). Put there only what no tool's description says.
 - `src/people/kit.ts`: turns People's actions into kit actions (marking the person's own decisions view-only, `VIEW_ONLY`), and defines the `show_*` views, the job (`update_people`, every five minutes), `get_record_title`, the records a host can open People at and offer in its @ menu, and the sources a connection can be limited to.
 - `src/people/runtime.ts`: People's context on the kit's `data.sqlite`, who is calling (browser owner, connection, job), write receipts, and the hub (accounts it lends, tool names, errors).
 - `src/people/domain/context.ts`: `Db`, People's synchronous SQL on the core's `transaction()` (the installation's own connection). There is no other connection to the database.
