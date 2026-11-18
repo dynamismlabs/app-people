@@ -1,19 +1,44 @@
 {
-  "mail": {
-    "messages": [
-      { "id": "fixture-m1", "threadId": "fixture-t1", "from": { "name": "Maya Chen", "email": "maya@northstar.example" }, "to": [{ "email": "you@personal.example" }], "cc": [], "subject": "Portfolio review", "date": "2026-11-10T16:00:00.000Z", "snippet": "Thanks for the intro.", "text": "Thanks for the intro. I will send the deck on Friday.", "labels": ["INBOX"] },
-      { "id": "fixture-m2", "threadId": "fixture-t2", "from": { "name": "You", "email": "you@personal.example" }, "to": [{ "name": "Jordan Bell", "email": "jordan@fieldwork.example" }], "cc": [], "subject": "Scope", "date": "2026-11-09T15:00:00.000Z", "snippet": "Revised proposal attached.", "text": "Revised proposal attached.", "labels": ["SENT"] }
-    ]
-  },
-  "calendar": {
-    "events": [
-      { "id": "fixture-e1", "title": "Portfolio discussion", "start": "2026-11-20T17:00:00.000Z", "end": "2026-11-20T18:00:00.000Z", "allDay": false }
-    ]
-  },
   "tools": {
-    "gmail__get_profile": { "result": { "emailAddress": "you@personal.example", "historyId": "100" } },
-    "ri__ai_text": { "result": { "text": "{\"commitments\":[],\"resolutions\":[],\"facts\":[],\"stages\":[]}" } },
-    "ri__create_task": { "result": { "id": "fixture-task-1", "title": "Fictional follow-up", "status": "open" } },
-    "ri__get_task": { "result": { "id": "fixture-task-1", "title": "Fictional follow-up", "status": "open", "completedAt": null } }
+    "gmail__get_profile": {"result": {"emailAddress": "you@personal.example", "historyId": "100"}},
+    "gmail__search_messages": {
+      "cases": [
+        {"args": {"pageToken": "fixture-page-2"}, "result": {"messages": [{"id": "fixture-m1", "threadId": "fixture-t1"}]}}
+      ],
+      "result": {"messages": [{"id": "fixture-m2", "threadId": "fixture-t1"}, {"id": "fixture-m3", "threadId": "fixture-t2"}], "nextPageToken": "fixture-page-2"}
+    },
+    "gmail__list_history": {
+      "cases": [
+        {"args": {"startHistoryId": "100"}, "result": {"historyId": "120", "history": [{"messagesAdded": [{"message": {"id": "fixture-m4", "threadId": "fixture-t2", "labelIds": ["SENT"]}}, {"message": {"id": "fixture-m5", "threadId": "fixture-t3", "labelIds": ["INBOX", "CATEGORY_PROMOTIONS"]}}]}]}},
+        {"args": {"startHistoryId": "120"}, "result": {"historyId": "120", "history": []}}
+      ]
+    },
+    "gmail__get_message": {
+      "cases": [
+        {"args": {"messageId": "fixture-m4"}, "result": {"id": "fixture-m4", "threadId": "fixture-t2", "labelIds": ["SENT"], "snippet": "Can we go over it on Monday?", "headers": {"From": "You <you@personal.example>", "To": "Jordan Bell <jordan@fieldwork.example>", "Subject": "Re: Scope"}}},
+        {"args": {"messageId": "fixture-m5"}, "result": {"id": "fixture-m5", "threadId": "fixture-t3", "labelIds": ["INBOX", "CATEGORY_PROMOTIONS"], "snippet": "Read more on our site.", "headers": {"From": "Design Weekly <news@designweekly.example>", "To": "you@personal.example", "Subject": "This week in design"}}}
+      ],
+      "error": {"code": "not_found", "message": "Requested entity was not found.", "httpStatus": 404}
+    },
+    "gmail__read_message": {
+      "cases": [
+        {"args": {"messageId": "fixture-m1"}, "result": {"id": "fixture-m1", "threadId": "fixture-t1", "historyId": "1", "internalDate": "1793977200000", "labelIds": ["SENT"], "snippet": "Thanks for the intro. Could you send the deck before Friday?", "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "You <you@personal.example>"}, {"name": "To", "value": "Maya Chen <maya@northstar.example>"}, {"name": "Subject", "value": "Portfolio review"}, {"name": "Date", "value": "Fri, 06 Nov 2026 15:00:00 GMT"}, {"name": "Message-ID", "value": "<fixture-m1@personal.example>"}], "body": {"data": "VGhhbmtzIGZvciB0aGUgaW50cm8uIENvdWxkIHlvdSBzZW5kIHRoZSBkZWNrIGJlZm9yZSBGcmlkYXk_"}}}},
+        {"args": {"messageId": "fixture-m2"}, "result": {"id": "fixture-m2", "threadId": "fixture-t1", "historyId": "1", "internalDate": "1794326400000", "labelIds": ["INBOX"], "snippet": "Here is the deck, as promised. I will send the budget next week.", "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "Maya Chen <maya@northstar.example>"}, {"name": "To", "value": "you@personal.example"}, {"name": "Subject", "value": "Re: Portfolio review"}, {"name": "Date", "value": "Tue, 10 Nov 2026 16:00:00 GMT"}, {"name": "Message-ID", "value": "<fixture-m2@northstar.example>"}, {"name": "In-Reply-To", "value": "<fixture-m1@personal.example>"}, {"name": "References", "value": "<fixture-m1@personal.example>"}], "body": {"data": "SGVyZSBpcyB0aGUgZGVjaywgYXMgcHJvbWlzZWQuIEkgd2lsbCBzZW5kIHRoZSBidWRnZXQgbmV4dCB3ZWVrLg"}}}},
+        {"args": {"messageId": "fixture-m3"}, "result": {"id": "fixture-m3", "threadId": "fixture-t2", "historyId": "1", "internalDate": "1794236400000", "labelIds": ["SENT"], "snippet": "Revised proposal attached.", "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "You <you@personal.example>"}, {"name": "To", "value": "Jordan Bell <jordan@fieldwork.example>"}, {"name": "Subject", "value": "Scope"}, {"name": "Date", "value": "Mon, 09 Nov 2026 15:00:00 GMT"}, {"name": "Message-ID", "value": "<fixture-m3@personal.example>"}], "body": {"data": "UmV2aXNlZCBwcm9wb3NhbCBhdHRhY2hlZC4"}}}},
+        {"args": {"messageId": "fixture-m4"}, "result": {"id": "fixture-m4", "threadId": "fixture-t2", "historyId": "1", "internalDate": "1794506400000", "labelIds": ["SENT"], "snippet": "Can we go over it on Monday?", "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "You <you@personal.example>"}, {"name": "To", "value": "Jordan Bell <jordan@fieldwork.example>"}, {"name": "Subject", "value": "Re: Scope"}, {"name": "Date", "value": "Thu, 12 Nov 2026 18:00:00 GMT"}, {"name": "Message-ID", "value": "<fixture-m4@personal.example>"}, {"name": "In-Reply-To", "value": "<fixture-m3@personal.example>"}, {"name": "References", "value": "<fixture-m3@personal.example>"}], "body": {"data": "Q2FuIHdlIGdvIG92ZXIgaXQgb24gTW9uZGF5Pw"}}}}
+      ],
+      "error": {"code": "not_found", "message": "Requested entity was not found.", "httpStatus": 404}
+    },
+    "google_calendar__list_calendars": {"result": {"calendars": [{"id": "you@personal.example", "summary": "you@personal.example", "primary": true, "accessRole": "owner"}]}},
+    "google_calendar__sync_events": {
+      "cases": [
+        {"args": {"syncToken": "fixture-sync-1"}, "result": {"events": [{"id": "fixture-e2", "summary": "Scope review", "start": "2026-11-23T16:00:00.000Z", "end": "2026-11-23T16:30:00.000Z", "status": "confirmed", "htmlLink": "https://calendar.google.com/calendar/event?eid=fixture-e2", "allDay": false, "startTimeZone": "America/Denver", "organizer": {"email": "you@personal.example", "self": true}, "attendees": [{"email": "you@personal.example", "self": true, "organizer": true, "resource": false, "optional": false, "responseStatus": "accepted"}, {"email": "jordan@fieldwork.example", "displayName": "Jordan Bell", "self": false, "organizer": false, "resource": false, "optional": false, "responseStatus": "accepted"}], "attendeesOmitted": false, "updated": "2026-11-23T16:00:00.000Z", "cancelled": false}], "nextSyncToken": "fixture-sync-2", "calendarTimeZone": "America/Denver"}},
+        {"args": {"syncToken": "fixture-sync-2"}, "result": {"events": [], "nextSyncToken": "fixture-sync-2", "calendarTimeZone": "America/Denver"}}
+      ],
+      "result": {"events": [{"id": "fixture-e1", "summary": "Portfolio discussion", "start": "2026-11-20T17:00:00.000Z", "end": "2026-11-20T18:00:00.000Z", "status": "confirmed", "htmlLink": "https://calendar.google.com/calendar/event?eid=fixture-e1", "allDay": false, "startTimeZone": "America/Denver", "organizer": {"email": "you@personal.example", "self": true}, "attendees": [{"email": "you@personal.example", "self": true, "organizer": true, "resource": false, "optional": false, "responseStatus": "accepted"}, {"email": "maya@northstar.example", "displayName": "Maya Chen", "self": false, "organizer": false, "resource": false, "optional": false, "responseStatus": "accepted"}], "attendeesOmitted": false, "updated": "2026-11-20T17:00:00.000Z", "cancelled": false}], "nextSyncToken": "fixture-sync-1", "calendarTimeZone": "America/Denver"}
+    },
+    "ri__ai_text": {"result": {"text": "{\"commitments\":[],\"resolutions\":[],\"facts\":[],\"stages\":[]}"}},
+    "ri__create_task": {"result": {"id": "fixture-task-1", "title": "Fictional follow-up", "status": "open"}},
+    "ri__get_task": {"result": {"id": "fixture-task-1", "title": "Fictional follow-up", "status": "open", "completedAt": null}}
   }
 }

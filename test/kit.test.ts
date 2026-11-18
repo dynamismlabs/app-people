@@ -9,7 +9,7 @@ import { createApp, fixtureSource, runDueJobs, runJobNow, jobStatus, type Connec
 import { createTestConnection } from '@app-builder/core/node';
 import { application } from '../src/app.js';
 import type { Ctx } from '../src/people/domain/context.js';
-import { hubAccounts, refreshHubAccounts } from '../src/people/runtime.js';
+import { hubAccounts } from '../src/people/runtime.js';
 import { call, hubSource, owner, setup, state, teardown, type Grant } from './helpers.js';
 import { fakeHost, mail, OWNER, OWNER_WORK } from './fakes.js';
 
@@ -249,7 +249,7 @@ describe('the person\'s own work inside a host', () => {
 });
 
 describe('the kit\'s fixture source', () => {
-  /** What APP_CONNECTORS=fixtures serves: the capability shapes plus fixed answers for other tools. */
+  /** The kit's fixture source with fixed answers, for Ri's own services. */
   const fixtures: ConnectorFixtures = {
     mail: { messages: [{ id: 'm1', from: { name: 'Maya Chen', email: 'maya@northstar.example' }, to: [{ email: OWNER }], cc: [], subject: 'Hello', date: recent(2), snippet: 'Hello', text: 'Hello', labels: ['INBOX'] }] },
     calendar: { events: [] },
@@ -272,20 +272,8 @@ describe('the kit\'s fixture source', () => {
     expect(checked.items[0].taskStatus).toMatch(/done|completed/i);
     // Ri's own services need no approval: the fixture's approval answer is for writes that reach outside.
   });
-
-  it('can\'t drive People\'s mail sync: it has no Gmail history or full messages, so the account waits with a clear reason', async () => {
-    state.platform!.connectors = fixtureSource(fixtures);
-    const c = ctx!;
-    const kit = { platform: state.platform!, viewer: { id: 'local-owner', name: 'You', email: 'owner@localhost' }, request: new Request('http://127.0.0.1:4364/') };
-    const lent = await refreshHubAccounts(kit, c);
-    expect(lent.mail).toEqual({ accounts: [OWNER], multi: false });
-    const started = await runJobNow(application, state.platform!, 'update_people');
-    await started.done;
-    const sources = await runAs('list_sources', {});
-    const account = sources.accounts.find((item: { kind: string }) => item.kind === 'mail');
-    expect(account.lastError ?? '').toMatch(/gmail__list_history|gmail__read_message|allowed/);
-    expect((await runAs('list_people', { limit: 10 })).items).toEqual([]);
-  });
+  // People's mail and calendar sync on fixtures/connectors.json, whose tools answer by their
+  // arguments, is in test/fixtures.test.ts.
 });
 
 /** Call an action as the owner's browser, with whatever hub the platform has now. */
