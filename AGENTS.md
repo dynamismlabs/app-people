@@ -1,6 +1,6 @@
 # People
 
-People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.2, starter 0.2.0, vendored in `vendor/`; upgraded with the kit's `upgrade --core`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
+People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.3, starter 0.2.0, vendored in `vendor/`; upgraded with the kit's `upgrade --core`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
 
 ## Commands
 
@@ -34,7 +34,7 @@ People keeps one person's relationships: people, companies, conversations, meeti
 ## Who is calling
 
 - **The person's browser** (no OAuth connection) is the owner: every source and every action.
-- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. The kit drops a deleted source from every connection's choice before People sees it.
+- **An assistant connection** (each Ri place, Claude, ChatGPT) sees the sources chosen on the consent screen: accounts (`account:<address>`), collections (`manual`, `collection:<id>`) and imports (`import:<id>`), read or also write. The kit drops a deleted source from every connection's choice before People sees it. A Ri that installed People on this computer can instead grant itself a connection with the host key (the core's host grant, `host-key` in the data directory): that connection always has every source. Never read, copy or commit the key.
 - **People's view inside a host** calls through that connection. The person's own decisions are view-only (`visibility: ["app"]`): the host keeps them from the model, and the view's call acts as the owner when the connection was given every source. Limited connections stay limited. It's the host's rule (Ri enforces it); a host that ignores visibility would let its model call them, so mark nothing else view-only.
 - **The job** sees the accounts the hub lends.
 
