@@ -9,6 +9,8 @@ beforeEach(async () => { ctx = await setup({ now: new Date().toISOString(), real
 afterEach(() => { teardown(ctx); ctx = null; });
 const recent = (days: number) => new Date(Date.now() - days * 864e5).toISOString();
 const friday = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+// A date the passage doesn't state: well past the two weeks "next week" may reach.
+const unstated = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
 
 function accounts(): Record<string, FakeAccount> {
   return { personal: { email: OWNER, mail: [
@@ -50,7 +52,7 @@ describe('relationship extraction', () => {
   it('extracts a commitment with its exact passage, drops invented quotes and unstated dates, and creates no task', async () => {
     const h = host((prompt) => prompt.includes('S1') ? {
       commitments: [
-        { source: prompt.includes('portfolio examples') ? 'S2' : 'S1', direction: 'i_owe', other: 'maya@northstar.example', action: 'Introduce Maya to the research lead', due_date: '2026-12-01', passage: 'I will introduce you to the research lead next week.' },
+        { source: prompt.includes('portfolio examples') ? 'S2' : 'S1', direction: 'i_owe', other: 'maya@northstar.example', action: 'Introduce Maya to the research lead', due_date: unstated, passage: 'I will introduce you to the research lead next week.' },
         { source: 'S1', direction: 'i_owe', other: 'maya@northstar.example', action: 'Invented promise', due_date: null, passage: 'I promise to buy you a boat.' },
         { source: 'S1', direction: 'waiting_on', other: 'maya@northstar.example', action: 'Send the portfolio examples', due_date: friday, passage: 'I will send you the portfolio examples by Friday.' },
       ], resolutions: [], facts: [], stages: [],
