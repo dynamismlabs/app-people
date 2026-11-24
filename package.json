@@ -16,7 +16,7 @@
     "test:perf": "vitest run --config vitest.perf.config.ts"
   },
   "dependencies": {
-    "@app-builder/core": "file:vendor/app-builder-core-0.2.7.tgz",
+    "@app-builder/core": "file:vendor/app-builder-core-0.2.8.tgz",
     "@trpc/server": "11.17.0",
     "drizzle-orm": "0.45.2",
     "react": "19.2.3",
@@ -48,7 +48,7 @@
   "appBuilder": {
     "starterVersion": "0.2.0",
     "example": "tracker",
-    "coreVersion": "0.2.7"
+    "coreVersion": "0.2.8"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
