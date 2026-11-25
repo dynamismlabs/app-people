@@ -126,7 +126,7 @@ function Welcome({ coverage }: { coverage: Coverage }) {
           <p>Choose the exact accounts and calendars in Ri. People reads the last 90 days of mail and a year of calendar by default (you can change either), keeps what it reads on this computer and never sends anything.</p>
           {reading
             ? <p className="pe-small pe-muted">{ui.data.setup.grantedAccounts === 1 ? 'One account is' : `${ui.data.setup.grantedAccounts} accounts are`} being read. People appear as each page arrives.</p>
-            : <Button variant="primary" onClick={() => void app.openSources()}>Connect email and calendar</Button>}
+            : <Button variant="primary" onClick={() => void app.manageAccess()}>Connect email and calendar</Button>}
         </li>
         <li>
           <h2 className="ri-h3">Import contacts</h2>

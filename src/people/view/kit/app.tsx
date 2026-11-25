@@ -10,7 +10,7 @@
  * browser each use the kit's call, which checks what the host allows.
  */
 import { createContext, useCallback, useContext, useEffect, useInsertionEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useAppClient } from "@app-builder/core/react";
+import { useAppClient, useHubConnect } from "@app-builder/core/react";
 import { LiveRegion } from "./announce.js";
 import { installStyles } from "./styles.js";
 import { errorMessage, stableJson } from "./util.js";
@@ -193,6 +193,10 @@ export function RiAppProvider({ children, initialPath, openSettings }: RiAppProv
   const latest = useRef(0);
   const clientRef = useRef(client);
   clientRef.current = client;
+  // People's link to Ri, which lends it the person's mail and calendar (the kit's hub connection).
+  const hub = useHubConnect();
+  const hubRef = useRef(hub);
+  hubRef.current = hub;
   const here = () => embedded || typeof window === "undefined" ? stack.current.at(-1) ?? "/" : window.location.pathname + window.location.search;
 
   // Ri gave the view the `data` part of the opener's result. open_view returns { resource, data, scope }.
@@ -293,7 +297,13 @@ export function RiAppProvider({ children, initialPath, openSettings }: RiAppProv
       await moveTo("/sources");
     },
     manageAccess: async () => {
-      // Which accounts People reads is chosen in Ri; connecting People to Ri is in People's Settings.
+      // Not connected to Ri yet: connect from here. In the browser that's Ri's approval page; inside
+      // the Ri that installed People, Ri asks which accounts in its own dialog. Otherwise, and once
+      // connected, which accounts People reads is chosen in Ri, and connecting is in People's Settings.
+      const { hub: link, address, connect } = hubRef.current;
+      if (link?.wanted && link.source === "hub" && link.state !== "connected" && address) {
+        try { await connect(); return; } catch { /* Settings says why. */ }
+      }
       if (!embedded) { window.location.assign("/settings"); return; }
       if (settingsRef.current) { settingsRef.current(); return; }
       if (!(await clientRef.current.openInBrowser("/settings"))) {
