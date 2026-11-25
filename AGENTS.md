@@ -1,6 +1,6 @@
 # People
 
-People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.10, starter 0.2.0, vendored in `vendor/`; upgraded with the kit's `upgrade --core`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
+People keeps one person's relationships: people, companies, conversations, meetings, notes, follow-ups and small pipelines. It was an included app in Ri and now runs on App Builder (core 0.2.11, starter 0.2.0, vendored in `vendor/`; upgraded with the kit's `upgrade --core`) as its own MCP server. `docs/parity.md` lists what works as it did in Ri, what works differently and what can't, and the gaps in the kit and in Ri. Read it before changing how People connects, runs or is shown.
 
 ## Commands
 
