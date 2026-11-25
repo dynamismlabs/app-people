@@ -5,7 +5,8 @@
    screens.css, in black and white like Ri. This file is People's own screens. */
 @theme { --font-sans: var(--app-font); }
 /* The page around People's own screens takes their background, light or dark (Ri's kit tokens, src/people/view/kit/styles.ts). */
-:root, :root[data-theme="dark"] { --app-bg: var(--ri-bg, oklch(0.999 0 0)); }
+:root { --app-bg: var(--ri-bg, hsl(0 0% 100%)); }
+:root[data-theme="dark"] { --app-bg: var(--ri-bg, hsl(0 0% 5%)); }
 .eyebrow { text-transform: uppercase; color: var(--app-muted); letter-spacing: 2px; font-size: 10px; font-weight: 600; margin: 0 0 14px; }
 .subtitle { font-size: 13px; color: var(--muted); margin: 0; }
 
